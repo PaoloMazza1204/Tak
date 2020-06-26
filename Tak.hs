@@ -3,10 +3,10 @@
 -- Tipos data
 data TakPlayer = WhitePlayer | BlackPlayer deriving (Eq, Show, Enum) -- Jugadores. -- Show?
 data Chip = Wall TakPlayer | Stone TakPlayer
-data Box = Empty | Stack [Chip] -- Casillas. Son vacías o pilas de 1 o más fichas.
+data Box = Empty | Stack [Chip] deriving (Eq) -- Casillas. Son vacías o pilas de 1 o más fichas.
 data PlayerChips = Whites Int | Blacks Int -- Cantidad de fichas de los jugadores.
 data TakGame = Board [Box] (PlayerChips, PlayerChips) TakPlayer -- Tablero: /Casillas/Fichas/JugadorActivo.
-data TakAction = Move Box | Place Box -- Posibles movimientos.
+data TakAction = Unstack Box Box [Int] | Move Box Box | Place Chip Box -- Posibles movimientos.
 
 
 -- Util.
@@ -22,6 +22,12 @@ showChips (a,b) = (show a) ++ ('\n':(show b))
 showBoxes :: [Box] -> String
 showBoxes xs = concat (map show xs) -- Cambiar a ConcatWith
 
+count :: [Box] -> TakPlayer -> Int
+count boxes player = length (filter (isPlayer player) boxes)
+
+isPlayer :: TakPlayer -> Box -> Bool -- Extras
+isPlayer player (Stack ((Stone p):_)) = (p == player)
+isPlayer player _ = False
 
 -- Instancias.
 instance Show PlayerChips where
@@ -70,6 +76,10 @@ terminado, se debe retornar una lista vacía.-}
 
 score :: TakGame -> [(TakPlayer, Int)] {-Retorna el puntaje para todos los jugadores en el estado
 de juego dado. Esto es independiente de si el juego está terminado o no.-}
+score (Board boxes _ _) = zip [player1, player2] [s1, s2] -- [(player1, s1), (player2, s2)]
+    where
+        s1 = count boxes player1
+        s2 = count boxes player2
 
 showGame :: TakGame -> String {-Convierte el estado de juego a un texto que puede ser impreso en la
 consola para mostrar el tablero y demás información de la partida.-}
