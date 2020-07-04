@@ -32,12 +32,19 @@ a los módulos necesarios.
 
 data TakPlayer = WhitePlayer | BlackPlayer deriving (Eq, Show, Enum, Bounded)
 data Chip = Wall TakPlayer | Stone TakPlayer -- Fichas.
-data Box = Empty | Stack [Chip] deriving (Eq) -- Casillas. Son vacías o pilas de 1 o más fichas.
+data Box = Empty String | Stack String [Chip] deriving (Eq) -- Casillas. Son vacías o pilas de 1 o más fichas.
 data PlayerChips = Whites Int | Blacks Int -- Cantidad de fichas de los jugadores.
 data TakGame = Board [Box] (PlayerChips, PlayerChips) TakPlayer -- Tablero: /Casillas/Fichas/JugadorActivo.
-data TakAction = Unstack Box Box [Int] | Move Box Box | Place Chip Box -- Posibles movimientos.
+data TakAction = Move Box Box [Int] | Place Chip Box -- Posibles movimientos.
 
 -- Util.
+tableroStrings3x3 = [x ++ y | x <- ["A", "B", "C"], y <- ["1", "2", "3"]]
+tableroVacio3x3 = [Empty s | s <- tableroStrings3x3]
+
+tableroStrings4x4 = [x ++ y | x <- ["A", "B", "C", "D"], y <- ["1", "2", "3", "4"]]
+tableroVacio4x4 = [Empty s | s <- tableroStrings4x4]
+
+
 player1 = WhitePlayer -- Jugador de las fichas blancas.
 player2 = BlackPlayer -- Jugador de las fichas negras.
 players = [player1, player2] -- Jugadores.
@@ -48,7 +55,16 @@ showChips :: (PlayerChips, PlayerChips) -> String
 showChips (a,b) = (show a) ++ ('\n':(show b))
 
 showBoxes :: [Box] -> String
-showBoxes xs = concat (map show xs) -- Cambiar a ConcatWith
+showBoxes xs = concat (if largo == 9 then separarEnN 3 lista else separarEnN 4 lista)
+   where
+      lista = map show xs -- [A1, A2, A3, \n, B1, B2, B3, \n, C1, C2, C3]
+      largo = length lista
+      separarEnN n [] = []
+      separarEnN n lista = (take n lista) ++ ("\n":(separarEnN n (drop n lista)))
+
+showBox :: Box -> String
+showBox (Empty s) = s ++ ": []\n"
+showBox (Stack s fichas) = s ++ ": " ++ (show (map show fichas)) ++ "\n"
 
 count :: [Box] -> TakPlayer -> Int
 count boxes player = length (filter (isPlayer player) boxes)
@@ -57,32 +73,57 @@ isPlayer :: TakPlayer -> Box -> Bool -- Extras
 isPlayer player (Stack ((Stone p):_)) = (p == player)
 isPlayer player _ = False
 
+{-
+
+A1 A2 A3
+B1 B2 B3
+C1 C2 C3
+
+A1: [ |BlackPLayer| , __WhitePLayer__]
+A2: [__WhitePlayer__]
+A3: []
+.
+.
+.
+C3:
+
+Fichas blancas: 10
+Fichas negras: 10
+Jugador actual: WhitePlayer
+-}
+
+--------------------------- Move A1 A3 [1, 1] = Desapilar A1 a A3 dejando: [1, 1]
+--------------------------- Place (Stone WhitePLayer) A2 = Colocar __WhitePlayer__ en A2
 -- Instancias.
+instance Show TakAction where
+   show (Move ini fin des) = "Desapilar " ++ show ini ++ " a " ++ show fin ++ " dejando: " ++ show des
+   show (Place ficha lugar) = "Colocar " ++ show ficha ++ " en " ++ show lugar
+ 
 instance Show PlayerChips where
-    show (Whites w) = "Fichas blancas: " ++ (show w)
-    show (Blacks b) = "Fichas negras: " ++ (show b)
+   show (Whites w) = "Fichas blancas: " ++ (show w)
+   show (Blacks b) = "Fichas negras: " ++ (show b)
 
 instance Show Chip where
-    show (Wall player) = " |" ++ (show player) ++ "| "
-    show (Stone player) = " _" ++ (show player) ++ "_ "
+   show (Wall player) = " |" ++ (show player) ++ "| " --"pared del jugador " ++ show player --
+   show (Stone player) = " __" ++ (show player) ++ "__ " --"plana del jugador " ++ show player 
 
 instance Show Box where
-    show Empty = " ... "
-    show (Stack players) = "Pila de tope: " ++ (show (players !! 0))
+   show (Empty s) = s
+   show (Stack s _) = s
 
+-- (fst,snd)
 instance Show TakGame where
-    show (Board boxes chips player) = "Jugador activo: " ++ (show player)
-    ++ ('\n':(showChips chips)) ++ "\nTablero:\n" ++ (showBoxes boxes)
+   show (Board boxes chips player) = (showBoxes boxes) ++ "\n" ++ (concat (map showBox boxes)) ++ ('\n':(show (fst chips)) ++ ('\n':(show (snd chips)))) ++ ('\n':"Jugador activo: " ++ (show player)) -- "Jugador activo: " ++ (show player) ++ ('\n':(showChips chips)) ++ "\nTablero:\n" ++ (showBoxes boxes)
 
 -- Funciones del Tak.
 
 -- El estado inicial del juego Tak con un tablero de 3x3, con el tablero vacío.
 beginning3x3 :: TakGame
-beginning3x3 = Board (replicate 9 Empty) (Whites 10, Blacks 10) firstPlayer
+beginning3x3 = Board (tableroVacio3x3) (Whites 10, Blacks 10) firstPlayer
 
 -- El estado inicial del juego Tak con un tablero de 4x4, con el tablero vacío.
 beginning4x4 :: TakGame
-beginning4x4 = Board (replicate 16 Empty) (Whites 15, Blacks 15) firstPlayer
+beginning4x4 = Board (tableroVacio4x4) (Whites 15, Blacks 15) firstPlayer
 
 {-La lista debe incluir una y solo una tupla para
 cada jugador. Si el jugador está activo, la lista asociada debe incluir todos sus posibles movimientos para
@@ -118,12 +159,12 @@ showBoard board = show board
 {-Convierte una acción a un texto que puede ser impreso en la
 consola para mostrarla.-}
 showAction :: TakAction -> String
-showAction a = show a --TODO
+showAction a = show a
 
 {-Obtiene una acción a partir de un texto que puede haber sido
 introducido por el usuario en la consola.-}
 readAction :: String -> TakAction
-readAction = read --TODO
+--readAction s = 
 
 {- Determina a cuál jugador le toca mover, dado un estado de juego. OJO, SEGURO DESPUÉS SE DEVUELVA NOPLAYER PARA INDICAR QUE SE FINALIZA
 EL JUEGO (VER EL TIK-TAK-TOE). -}
@@ -181,7 +222,7 @@ consoleAgent player state = do
       getLine
       return Nothing
    else do
-      putStrLn ("Select one move:" ++ concat [" "++ show m | m <- moves])
+      putStrLn ("Select one move:" ++ concat [" "++ show m | m <- moves]) -- concat [", "]
       line <- getLine
       let input = readAction line
       if elem input moves then return (Just input) else do 
