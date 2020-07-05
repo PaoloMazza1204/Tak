@@ -51,9 +51,19 @@ players = [player1, player2] -- Jugadores.
 
 firstPlayer = player1 -- Jugador inicial.
 
+-- Mensajes de errores:
+errorPlaceNoEmpty = "Solo puedes colocar fichas en espacios vacíos."
+errorNotYourTurn = "Le toca al otro jugador."
+errorLacksChips = "No tienes más fichas."
+errorWrongChipsFormat = "El formato de la tupla de fichas debe ser (Whites w, Blacks b)" -- No debería pasar nunca.
+errorEndGame = "El juego ya ha terminado."
+errorMoveEmpty = "No se puede mover una casilla vacía."
+
+-- Format para una tupla de fichas de los jugadores.
 showChips :: (PlayerChips, PlayerChips) -> String
 showChips (a,b) = (show a) ++ ('\n':(show b))
 
+-- Format para un tablero.
 showBoxes :: [Box] -> String
 showBoxes xs = concat (if largo == 9 then separarEnN 3 lista else separarEnN 4 lista)
    where
@@ -62,16 +72,52 @@ showBoxes xs = concat (if largo == 9 then separarEnN 3 lista else separarEnN 4 l
       separarEnN n [] = []
       separarEnN n lista = (take n lista) ++ ("\n":(separarEnN n (drop n lista)))
 
+-- Format para una casilla.
 showBox :: Box -> String
 showBox (Empty s) = s ++ ": []\n"
 showBox (Stack s fichas) = s ++ ": " ++ (show (map show fichas)) ++ "\n"
 
+-- Cuenta las ocurrencias de un jugador en el casillero.
 count :: [Box] -> TakPlayer -> Int
 count boxes player = length (filter (isPlayer player) boxes)
 
+-- Devuelve True si es un jugador.
 isPlayer :: TakPlayer -> Box -> Bool -- Extras
 isPlayer player (Stack ((Stone p):_)) = (p == player)
 isPlayer player _ = False
+
+-- Devuelve el jugador opuesto.
+oppositePlayer :: TakPlayer -> TakPlayer
+oppositePlayer WhitePLayer = BlackPLayer
+oppositePlayer BlackPLayer = WhitePLayer
+
+-- Resta una ficha a un jugador.
+substractChip :: TakPlayer -> (PlayerChips, PlayerChips) -> (PlayerChips, PlayerChips)
+substractChip (WhitePLayer) ((Whites w), b) = (Whites (w - 1), b)
+substractChip (BlackPLayer) (w, (Blacks b)) = (w, Blacks (b - 1))
+substractChip _ _ = error errorWrongChipsFormat
+
+-- Actualiza el vector de fichas a partir de un movimiento válido.
+performAction :: TakGame -> (TakPlayer, TakAction) -> TakGame
+-- Place.
+performAction g@(Board _ (Whites 0, _) _) t@(WhitePLayer, (Place _ _)) = error errorLacksChips
+performAction g@(Board _ (_, Blacks 0) _) t@(BlackPLayer, (Place _ _)) = error errorLacksChips
+performAction g@(Board b chs _) t@(p, (Place ch c@(Empty s))) = Board newB newChs newP
+   where
+      newP = oppositePlayer p
+      newChs = substractChip p chs
+      newB = putOnEmpty ch b c
+      putOnEmpty r xs x = map (ifMatchReplace r x) xs
+      ifMatchReplace rep (Empty str1) nm@(Empty str2) = if str2 == str1
+                                                        then Stack str1 [rep]
+                                                        else nm
+      ifMatchReplace _ _ nm = nm
+performAction g@(Board b chs _) t@(p, (Place ch c)) = error errorPlaceNoEmpty
+-- Move.
+performAction _ (_, (Move (Empty _) _ _)) = error errorMoveEmpty
+
+-- Retorna True si se cumple una condición de fin de juego.
+endGame :: TakGame -> Bool
 
 {-
 
@@ -135,7 +181,10 @@ actions (TakGame f) = zip players [if f then [] else [TakAction], []] --TODO
 estado de juego dado, y retorna el estado resultante. Se debe levantar un error si el jugador dado no es el
 jugador activo, si el juego está terminado, o si la acción no es realizable.-}
 next :: TakGame -> (TakPlayer, TakAction) -> TakGame
-next _ _ = TakGame True --TODO
+next g (Nothing, _) = error errorEndGame
+next g t@(p, _)
+   | (fromJust (activePlayer g)) == p = performAction g t -- hacer acción correspondiente.
+   | otherwise = error errorNotYourTurn
 
 {-Si el juego está terminado retorna el resultado de juego
 para cada jugador. Este valor es 1 si el jugador ganó, -1 si perdió y 0 si se empató. Si el juego no está
@@ -169,6 +218,7 @@ readAction :: String -> TakAction
 {- Determina a cuál jugador le toca mover, dado un estado de juego. OJO, SEGURO DESPUÉS SE DEVUELVA NOPLAYER PARA INDICAR QUE SE FINALIZA
 EL JUEGO (VER EL TIK-TAK-TOE). -}
 activePlayer :: TakGame -> Maybe TakPlayer
+activePlayer g | endGame g = Nothing
 activePlayer (Board _ _ player) = Just player
 
 {-activePlayer :: TakGame -> Maybe TakPlayer
