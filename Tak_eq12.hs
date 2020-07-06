@@ -11,7 +11,7 @@ module Tak where
 
 import Data.Maybe (fromJust, listToMaybe)
 import Data.List
-import Data.Char
+import Data.Char (ord)
 import System.Random
 
 {- Es posible que el paquete `System.Random` no esté disponible si se instaló el core de la Haskell 
@@ -196,17 +196,31 @@ modifyBox des path (Stack s chs) i = newStack
       addChips app (Empty s) = Stack s app
       addChips app (Stack s cs) = Stack s (app ++ cs)
 
--- Desapilar una pila.
+-- Desapilar una pila y actualizar el tablero.
 replacePath :: [Int] -> [Box] -> Box -> [Box] -> [Box]
-replacePath des path stck@(Stack s chs) b = -- Devolver tablero.
+replacePath des path stck@(Stack s chs) b = bWithPathNStack -- Devolver tablero.
    where
-      modifiedPath d p stck = map (modifyBox d p stck) [0..((length d) - 1)]
+      modifiedPath = map (modifyBox des path stck) [0..((length des) - 1)]
       sumPath = foldr1 (+) des
-      modifiedStack (Stack s cs) d = Stack s (drop sumPath cs)
-      -- Mapear y reemplazar la pila en el tablero.
-      -- Mapear y reemplazar la stack modificada.
+      modifiedStack = Stack s (drop sumPath chs)
+      bWithStack = map (ifStackReplace stck) b -- Mapear y reemplazar la pila en el tablero.
+      ifStackReplace (Stack _ _) b2@(Empty _) = b2
+      ifStackReplace (Stack s1 _) b2@(Stack s2 _) = if s1 == s2
+                                                    then modifiedStack
+                                                    else b2
+      ifStackReplace _ b2 = b2
+      bWithPathNStack = map (ifInPathReplace modifiedPath) bWithStack -- Mapear y reemplazar la stack modificada.
+      ifInPathReplace p box = map (ifMatchReplace box) p
+      ifMatchReplace b1@(Stack s1 _) b2@(Stack s2 _) = if s1 == s2
+                                                       then b2
+                                                       else b1
+      ifMatchReplace b1@(Empty s1) b2@(Stack s2 _) = if s1 == s2
+                                                     then b2
+                                                     else b1
+      ifMatchReplace _ b2 = b2
 
--- Actualiza el vector de fichas a partir de un movimiento válido.
+{- Actualiza el vector de fichas a partir de un movimiento válido.
+   Si el movimiento no es válido se arroja un error. -}
 performAction :: TakGame -> (TakPlayer, TakAction) -> TakGame
 -- Place.
 performAction (Board _ (Whites 0, _) _) (WhitePLayer, (Place _ _)) = error errorLacksChips
@@ -267,10 +281,10 @@ performAction (Board b cs _) (p, (Move b1@(Stack _ chs) b2@(Empty _) des)) = Boa
       path = getPath b1 b2 b
       newB = replacePath des path b1 b
 
-
 -- Retorna True si se cumple una condición de fin de juego.
 endGame :: TakGame -> Bool
-
+endGame (Board _ (Whites w, Blacks b) _) | or [w == 0, b == 0] = True
+-- Falta la condición de llegar de un lado a otro.
 {-
 
 A1 A2 A3
@@ -308,12 +322,6 @@ instance Show Chip where
 instance Show Box where
    show (Empty s) = s
    show (Stack s _) = s
-
-
-
-
-
-
 
 -- (fst,snd)
 instance Show TakGame where
@@ -360,8 +368,8 @@ score (Board boxes _ _) = zip [player1, player2] [s1, s2] -- [(player1, s1), (pl
 
 {-Convierte el estado de juego a un texto que puede ser impreso en la
 consola para mostrar el tablero y demás información de la partida.-}
-showBoard :: TakGame -> String
-showBoard board = show board
+showGame :: TakGame -> String
+showGame board = show board
 
 {-Convierte una acción a un texto que puede ser impreso en la
 consola para mostrarla.-}
@@ -397,7 +405,7 @@ agentes dados. Retorna una tupla con los puntajes (score) finales del juego.
 -}
 runMatch :: (TakAgent, TakAgent) -> TakGame -> IO [(TakPlayer, Int)]
 runMatch ags@(ag1, ag2) g = do
-   putStrLn (showBoard g)
+   putStrLn (showGame g)
    case (activePlayer g) of
       Nothing -> return $ result g
       Just p -> do
