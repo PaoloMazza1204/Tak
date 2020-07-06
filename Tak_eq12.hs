@@ -10,7 +10,8 @@ Leonardo Val, Ignacio Pacheco.
 module Tak where
 
 import Data.Maybe (fromJust, listToMaybe)
-import Data.List (elemIndex)
+import Data.List
+import Data.Char (ord)
 import System.Random
 
 {- Es posible que el paquete `System.Random` no esté disponible si se instaló el core de la Haskell 
@@ -51,9 +52,23 @@ players = [player1, player2] -- Jugadores.
 
 firstPlayer = player1 -- Jugador inicial.
 
+-- Mensajes de errores:
+errorPlaceNoEmpty = "Solo puedes colocar fichas en espacios vacíos."
+errorNotYourTurn = "Le toca al otro jugador."
+errorLacksChips = "No tienes más fichas."
+errorWrongChipsFormat = "El formato de la tupla de fichas debe ser (Whites w, Blacks b)" -- No debería pasar nunca.
+errorEndGame = "El juego ya ha terminado."
+errorMoveEmpty = "No se puede mover una casilla vacía."
+errorNotYourStack = "Esta pila no te pertenece."
+errorNotStraight = "Movimiento inválido."
+errorWallInPath = "Movimiento no válido, hay un muro en el camino."
+errorPath = "Desplazamiento no válido."
+
+-- Format para una tupla de fichas de los jugadores.
 showChips :: (PlayerChips, PlayerChips) -> String
 showChips (a,b) = (show a) ++ ('\n':(show b))
 
+-- Format para un tablero.
 showBoxes :: [Box] -> String
 showBoxes xs = concat (if largo == 9 then separarEnN 3 lista else separarEnN 4 lista)
    where
@@ -62,17 +77,214 @@ showBoxes xs = concat (if largo == 9 then separarEnN 3 lista else separarEnN 4 l
       separarEnN n [] = []
       separarEnN n lista = (take n lista) ++ ("\n":(separarEnN n (drop n lista)))
 
+-- Format para una casilla.
 showBox :: Box -> String
 showBox (Empty s) = s ++ ": []\n"
 showBox (Stack s fichas) = s ++ ": " ++ (show (map show fichas)) ++ "\n"
 
+-- Cuenta las ocurrencias de un jugador en el casillero.
 count :: [Box] -> TakPlayer -> Int
 count boxes player = length (filter (isPlayer player) boxes)
 
+-- Devuelve True si es un jugador.
 isPlayer :: TakPlayer -> Box -> Bool -- Extras
 isPlayer player (Stack ((Stone p):_)) = (p == player)
 isPlayer player _ = False
 
+-- Devuelve el jugador opuesto.
+oppositePlayer :: TakPlayer -> TakPlayer
+oppositePlayer WhitePLayer = BlackPLayer
+oppositePlayer BlackPLayer = WhitePLayer
+
+-- Resta una ficha a un jugador.
+substractChip :: TakPlayer -> (PlayerChips, PlayerChips) -> (PlayerChips, PlayerChips)
+substractChip (WhitePLayer) ((Whites w), b) = (Whites (w - 1), b)
+substractChip (BlackPLayer) (w, (Blacks b)) = (w, Blacks (b - 1))
+substractChip _ _ = error errorWrongChipsFormat
+
+-- Devuelve el jugador de la ficha.
+getPlayer :: Chip -> TakPlayer
+getPlayer (Wall WhitePLayer) = WhitePLayer
+getPlayer (Wall BlackPLayer) = BlackPLayer
+getPlayer (Stone WhitePLayer) = WhitePLayer
+getPlayer (Stone BlackPlayer) = BlackPLayer
+
+-- Devuelve True si el movimiento es en línea recta.
+checkNotStraight :: String -> String -> Bool
+checkNotStraight s1 s2 = diffChar && diffDigit
+   where
+      diffChar = (head s1) /= (head s2)
+      diffDigit = (tail s1) /= (tail s2)
+
+-- Devuelve True si una casilla debería ser parte del recorrido de una fila.
+takeSameRow :: Box -> String -> String -> Bool
+takeSameRow (Empty s) si sf = (head si == head sf) && (condition)
+   where
+      ni = read (tail si) :: Int
+      nf = read (tail sf) :: Int
+      ns = read (tail s) :: Int
+      condition = if ni < nf then (ns > ni) && (ns <= nf) else (ns < ni) && (ns >= nf)
+takeSameRow (Stack s _) si sf = (head si == head sf) && (condition)
+   where
+      ni = read (tail si) :: Int
+      nf = read (tail sf) :: Int
+      ns = read (tail s) :: Int
+      condition = if ni < nf then (ns > ni) && (ns <= nf) else (ns < ni) && (ns >= nf)
+
+-- Devuelve True si una casilla debería ser parte del recorrido de una columna.
+takeSameColumn :: Box -> String -> String -> Bool
+takeSameColumn (Empty s) si sf = (tail si == tail sf) && (condition)
+   where
+      ni = ord (head si)
+      nf = ord (head sf)
+      ns = ord (head s)
+      condition = if ni < nf then (ns > ni) && (ns <= nf) else (ns < ni) && (ns >= nf)
+takeSameColumn (Stack s _) si sf = (tail si == tail sf) && (condition)
+   where
+      ni = ord (head si)
+      nf = ord (head sf)
+      ns = ord (head s)
+      condition = if ni < nf then (ns > ni) && (ns <= nf) else (ns < ni) && (ns >= nf)
+
+-- Devuelve el camino recto entre dos casillas.
+getPath :: Box -> Box -> [Box] -> [Box]
+getPath (Stack i _) (Empty f) b = if sameRow
+                                  then res1
+                                  else res2
+   where
+      sameRow = (head i == head f)
+      resRow = [x | x <- b, takeSameRow x i f]
+      resColumn = [x | x <- b, takeSameColumn x i f]
+      res1 = if i > f then reverse resRow else resRow
+      res2 = if i > f then reverse resColumn else resColumn
+
+getPath (Stack i _) (Stack f _) b = if sameRow
+                                    then [x | x <- b, takeSameRow x i f]
+                                    else [x | x <- b, takeSameColumn x i f]
+   where
+      sameRow = (head i == head f)
+
+-- Devuelve True si hay una pared en el camino.
+checkWallInPath :: [Box] -> Bool
+checkWallInPath path = or (map isWall path)
+   where
+      isWall (Stack _ ((Wall _):_)) = True
+      isWall _ = False
+
+-- Devuelve true si hay un error en el camino.
+checkPathError :: Box -> [Box] -> [Int]-> [Box] -> Bool
+checkPathError (Stack _ stck) path des b = condit1 || condit2 || condit3 || condit4 || condit5
+   where
+      sumDes = foldr1 (+) des
+      lenDes = length des
+      lenPath = length path
+      lenBoxes = length b
+      lenStack = length stck
+      n = floor (sqrt (fromIntegral lenBoxes))
+      condit1 = or (map (\x -> x < 1) des) -- en 3x3 [1,0]
+      condit2 = sumDes > n -- en 3x3 [2,2]
+      condit3 = lenDes >= n -- en 3x3 [1,1,1,1] error de usuario, no sabe la regla.
+      condit4 = sumDes > lenStack -- en 3x3 [2,2] con una pila de 1 error de usuario.
+      condit5 = lenDes /= lenPath -- en 3x3 de A1 a A2 con des = [1,1,1,2,3,3] error de usuario.
+
+-- Apila una casilla.
+modifyBox :: [Int] -> [Box] -> Box -> Int -> Box
+modifyBox des path (Stack s chs) i = newStack
+   where
+      taken = take (des!!i) chs
+      newStack = addChips taken (path!!i)
+      addChips app (Empty s) = Stack s app
+      addChips app (Stack s cs) = Stack s (app ++ cs)
+
+-- Desapilar una pila y actualizar el tablero.
+replacePath :: [Int] -> [Box] -> Box -> [Box] -> [Box]
+replacePath des path stck@(Stack s chs) b = bWithPathNStack -- Devolver tablero.
+   where
+      modifiedPath = map (modifyBox des path stck) [0..((length des) - 1)]
+      sumPath = foldr1 (+) des
+      modifiedStack = Stack s (drop sumPath chs)
+      bWithStack = map (ifStackReplace stck) b -- Mapear y reemplazar la pila en el tablero.
+      ifStackReplace (Stack _ _) b2@(Empty _) = b2
+      ifStackReplace (Stack s1 _) b2@(Stack s2 _) = if s1 == s2
+                                                    then modifiedStack
+                                                    else b2
+      ifStackReplace _ b2 = b2
+      bWithPathNStack = map (ifInPathReplace modifiedPath) bWithStack -- Mapear y reemplazar la stack modificada.
+      ifInPathReplace p box = map (ifMatchReplace box) p
+      ifMatchReplace b1@(Stack s1 _) b2@(Stack s2 _) = if s1 == s2
+                                                       then b2
+                                                       else b1
+      ifMatchReplace b1@(Empty s1) b2@(Stack s2 _) = if s1 == s2
+                                                     then b2
+                                                     else b1
+      ifMatchReplace _ b2 = b2
+
+{- Actualiza el vector de fichas a partir de un movimiento válido.
+   Si el movimiento no es válido se arroja un error. -}
+performAction :: TakGame -> (TakPlayer, TakAction) -> TakGame
+-- Place.
+performAction (Board _ (Whites 0, _) _) (WhitePLayer, (Place _ _)) = error errorLacksChips
+performAction (Board _ (_, Blacks 0) _) (BlackPLayer, (Place _ _)) = error errorLacksChips
+performAction g@(Board b chs _) t@(p, (Place ch c@(Empty s))) = Board newB newChs newP
+   where
+      newP = oppositePlayer p
+      newChs = substractChip p chs
+      newB = putOnEmpty ch b c
+      putOnEmpty r xs x = map (ifMatchReplace r x) xs --  "A2" [Empty "A1", Empty "A2", Empty "A3"...]
+      ifMatchReplace rep (Empty str1) nm@(Empty str2) = if str2 == str1
+                                                        then Stack str1 [rep]
+                                                        else nm
+      ifMatchReplace _ _ nm = nm
+
+performAction (Board b chs _) (p, (Place ch c)) = error errorPlaceNoEmpty
+-- Move.
+performAction _ (_, (Move (Empty _) _ _)) = error errorMoveEmpty
+performAction (Board _ _ _) (p, (Move (Stack _ chs) _ _))
+   | (top /= p) = error errorNotYourStack
+   where
+      top = getPlayer (head chs)
+
+performAction (Board _ _ _) (_, (Move (Stack si _) (Empty sf) _))
+   | notStraight = error errorNotStraight
+   where
+      notStraight = checkNotStraight si sf
+
+performAction (Board _ _ _) (_, (Move (Stack si _) (Stack sf _) _))
+   | notStraight = error errorNotStraight
+   where
+      notStraight = checkNotStraight si sf
+
+performAction g (_, (Move (Stack si _) (Stack sf _) _)) | s1 == s2 = g
+performAction (Board b _ _) (_, (Move b1@(Stack si _) b2@(Empty sf) _))
+   | checkWallInPath path = error errorWallInPath
+   where
+      path = getPath b1 b2 b
+
+performAction (Board b _ _) (_, (Move b1@(Stack si _) b2@(Stack sf _) _))
+   | checkWallInPath path = error errorWallInPath
+   where
+      path = getPath b1 b2 b
+
+performAction (Board b _ _) (_, (Move b1@(Stack si _) b2@(Empty _) des))
+   | checkPathError b1 path des b = error errorPath
+   where
+      path = getPath b1 b2 b
+
+performAction (Board b _ _) (_, (Move b1@(Stack si _) b2@(Stack _ _) des))
+   | checkPathError b1 path des b = error errorPath
+   where
+      path = getPath b1 b2 b
+
+performAction (Board b cs _) (p, (Move b1@(Stack _ chs) b2@(Empty _) des)) = Board newB cs newP
+   where
+      newP = oppositePlayer p
+      path = getPath b1 b2 b
+      newB = replacePath des path b1 b
+
+-- Retorna True si se cumple una condición de fin de juego.
+endGame :: TakGame -> Bool
+endGame (Board _ (Whites w, Blacks b) _) | or [w == 0, b == 0] = True
+-- Falta la condición de llegar de un lado a otro.
 {-
 
 A1 A2 A3
@@ -135,7 +347,10 @@ actions (TakGame f) = zip players [if f then [] else [TakAction], []] --TODO
 estado de juego dado, y retorna el estado resultante. Se debe levantar un error si el jugador dado no es el
 jugador activo, si el juego está terminado, o si la acción no es realizable.-}
 next :: TakGame -> (TakPlayer, TakAction) -> TakGame
-next _ _ = TakGame True --TODO
+next g (Nothing, _) = error errorEndGame
+next g t@(p, _)
+   | (fromJust (activePlayer g)) == p = performAction g t -- hacer acción correspondiente.
+   | otherwise = error errorNotYourTurn
 
 {-Si el juego está terminado retorna el resultado de juego
 para cada jugador. Este valor es 1 si el jugador ganó, -1 si perdió y 0 si se empató. Si el juego no está
@@ -153,8 +368,8 @@ score (Board boxes _ _) = zip [player1, player2] [s1, s2] -- [(player1, s1), (pl
 
 {-Convierte el estado de juego a un texto que puede ser impreso en la
 consola para mostrar el tablero y demás información de la partida.-}
-showBoard :: TakGame -> String
-showBoard board = show board
+showGame :: TakGame -> String
+showGame board = show board
 
 {-Convierte una acción a un texto que puede ser impreso en la
 consola para mostrarla.-}
@@ -169,6 +384,7 @@ readAction :: String -> TakAction
 {- Determina a cuál jugador le toca mover, dado un estado de juego. OJO, SEGURO DESPUÉS SE DEVUELVA NOPLAYER PARA INDICAR QUE SE FINALIZA
 EL JUEGO (VER EL TIK-TAK-TOE). -}
 activePlayer :: TakGame -> Maybe TakPlayer
+activePlayer g | endGame g = Nothing
 activePlayer (Board _ _ player) = Just player
 
 {-activePlayer :: TakGame -> Maybe TakPlayer
@@ -189,7 +405,7 @@ agentes dados. Retorna una tupla con los puntajes (score) finales del juego.
 -}
 runMatch :: (TakAgent, TakAgent) -> TakGame -> IO [(TakPlayer, Int)]
 runMatch ags@(ag1, ag2) g = do
-   putStrLn (showBoard g)
+   putStrLn (showGame g)
    case (activePlayer g) of
       Nothing -> return $ result g
       Just p -> do
