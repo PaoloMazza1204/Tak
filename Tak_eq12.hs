@@ -36,7 +36,7 @@ data Chip = Wall TakPlayer | Stone TakPlayer -- Fichas.
 data Box = Empty String | Stack String [Chip] deriving (Eq) -- Casillas. Son vacías o pilas de 1 o más fichas.
 data PlayerChips = Whites Int | Blacks Int -- Cantidad de fichas de los jugadores.
 data TakGame = Board [Box] (PlayerChips, PlayerChips) TakPlayer -- Tablero: /Casillas/Fichas/JugadorActivo.
-data TakAction = Move Box Box [Int] | Place Chip Box -- Posibles movimientos.
+data TakAction = Move String String [Int] | Place Chip String -- Posibles movimientos.
 
 -- Util.
 tableroStrings3x3 = [x ++ y | x <- ["A", "B", "C"], y <- ["1", "2", "3"]]
@@ -63,6 +63,7 @@ errorNotYourStack = "Esta pila no te pertenece."
 errorNotStraight = "Movimiento inválido."
 errorWallInPath = "Movimiento no válido, hay un muro en el camino."
 errorPath = "Desplazamiento no válido."
+errorMoveNotFound = "Movimiento no válido, quizá escribiste mal el movimiento."
 
 -- Format para una tupla de fichas de los jugadores.
 showChips :: (PlayerChips, PlayerChips) -> String
@@ -82,11 +83,41 @@ showBox :: Box -> String
 showBox (Empty s) = s ++ ": []\n"
 showBox (Stack s fichas) = s ++ ": " ++ (show (map show fichas)) ++ "\n"
 
+
+-- Devuelve true si una casilla es vacía.
+isEmpty :: Box -> Bool
+isEmpty (Empty _) = True
+isEmpty _ = False
+
+-- Devuelve una casilla del casillero.
+getBox :: String -> [Box] -> Box
+getBox s b = head filtered
+   where
+      mapped = map (matchBox s) b
+      filtered = filter (notNullStr) mapped
+      notNullStr (Empty str) = str /= ""
+      notNullStr (Stack str _) = str /= ""
+      matchBox s box@(Empty str) = if s == str then box else Empty ""
+      matchBox s box@(Stack str _) = if s == str then box else Empty ""
+
+-- Devuelve True si un jugador dado ganó la partida.
+won :: TakPlayer -> Bool
+won WhitePLayer = 
+won BlackPLayer = 
+
+-- Devuelve True si se empata.
+tie :: TakGame -> Bool
+tie (Board b _ _) = sameAmmount
+   where
+      sameAmmount = countW == countB
+      countW = count b WhitePLayer
+      countB = count b BlackPLayer
+
 -- Cuenta las ocurrencias de un jugador en el casillero.
 count :: [Box] -> TakPlayer -> Int
 count boxes player = length (filter (isPlayer player) boxes)
 
--- Devuelve True si es un jugador.
+-- Devuelve True si la pila pertenece a un jugador y su tope es una plana.
 isPlayer :: TakPlayer -> Box -> Bool -- Extras
 isPlayer player (Stack ((Stone p):_)) = (p == player)
 isPlayer player _ = False
@@ -104,12 +135,10 @@ substractChip _ _ = error errorWrongChipsFormat
 
 -- Devuelve el jugador de la ficha.
 getPlayer :: Chip -> TakPlayer
-getPlayer (Wall WhitePLayer) = WhitePLayer
-getPlayer (Wall BlackPLayer) = BlackPLayer
-getPlayer (Stone WhitePLayer) = WhitePLayer
-getPlayer (Stone BlackPlayer) = BlackPLayer
+getPlayer (Wall p) = p
+getPlayer (Stone p) = p
 
--- Devuelve True si el movimiento es en línea recta.
+-- Devuelve True si el movimiento no es en línea recta.
 checkNotStraight :: String -> String -> Bool
 checkNotStraight s1 s2 = diffChar && diffDigit
    where
@@ -124,6 +153,7 @@ takeSameRow (Empty s) si sf = (head si == head sf) && (condition)
       nf = read (tail sf) :: Int
       ns = read (tail s) :: Int
       condition = if ni < nf then (ns > ni) && (ns <= nf) else (ns < ni) && (ns >= nf)
+
 takeSameRow (Stack s _) si sf = (head si == head sf) && (condition)
    where
       ni = read (tail si) :: Int
@@ -139,6 +169,7 @@ takeSameColumn (Empty s) si sf = (tail si == tail sf) && (condition)
       nf = ord (head sf)
       ns = ord (head s)
       condition = if ni < nf then (ns > ni) && (ns <= nf) else (ns < ni) && (ns >= nf)
+
 takeSameColumn (Stack s _) si sf = (tail si == tail sf) && (condition)
    where
       ni = ord (head si)
@@ -147,22 +178,14 @@ takeSameColumn (Stack s _) si sf = (tail si == tail sf) && (condition)
       condition = if ni < nf then (ns > ni) && (ns <= nf) else (ns < ni) && (ns >= nf)
 
 -- Devuelve el camino recto entre dos casillas.
-getPath :: Box -> Box -> [Box] -> [Box]
-getPath (Stack i _) (Empty f) b = if sameRow
-                                  then res1
-                                  else res2
+getPath :: String -> String -> [Box] -> [Box]
+getPath i f b = if sameRow then res1 else res2
    where
       sameRow = (head i == head f)
       resRow = [x | x <- b, takeSameRow x i f]
       resColumn = [x | x <- b, takeSameColumn x i f]
       res1 = if i > f then reverse resRow else resRow
       res2 = if i > f then reverse resColumn else resColumn
-
-getPath (Stack i _) (Stack f _) b = if sameRow
-                                    then [x | x <- b, takeSameRow x i f]
-                                    else [x | x <- b, takeSameColumn x i f]
-   where
-      sameRow = (head i == head f)
 
 -- Devuelve True si hay una pared en el camino.
 checkWallInPath :: [Box] -> Bool
@@ -202,7 +225,7 @@ replacePath des path stck@(Stack s chs) b = bWithPathNStack -- Devolver tablero.
    where
       modifiedPath = map (modifyBox des path stck) [0..((length des) - 1)]
       sumPath = foldr1 (+) des
-      modifiedStack = Stack s (drop sumPath chs)
+      modifiedStack = if ((length chs) - sumPath) > 0 then Stack s (drop sumPath chs) else Empty s
       bWithStack = map (ifStackReplace stck) b -- Mapear y reemplazar la pila en el tablero.
       ifStackReplace (Stack _ _) b2@(Empty _) = b2
       ifStackReplace (Stack s1 _) b2@(Stack s2 _) = if s1 == s2
@@ -225,8 +248,9 @@ performAction :: TakGame -> (TakPlayer, TakAction) -> TakGame
 -- Place.
 performAction (Board _ (Whites 0, _) _) (WhitePLayer, (Place _ _)) = error errorLacksChips
 performAction (Board _ (_, Blacks 0) _) (BlackPLayer, (Place _ _)) = error errorLacksChips
-performAction g@(Board b chs _) t@(p, (Place ch c@(Empty s))) = Board newB newChs newP
+performAction (Board b chs _) (p, (Place ch s)) | isEmpty c = Board newB newChs newP
    where
+      c = getBox s b
       newP = oppositePlayer p
       newChs = substractChip p chs
       newB = putOnEmpty ch b c
@@ -238,60 +262,57 @@ performAction g@(Board b chs _) t@(p, (Place ch c@(Empty s))) = Board newB newCh
 
 performAction (Board b chs _) (p, (Place ch c)) = error errorPlaceNoEmpty
 -- Move.
-performAction _ (_, (Move (Empty _) _ _)) = error errorMoveEmpty
-performAction (Board _ _ _) (p, (Move (Stack _ chs) _ _))
+performAction (Board b _ _) (_, (Move s _ _)) | isEmpty c = error errorMoveEmpty
+   where
+      c = getBox s b
+
+performAction (Board b _ _) (p, (Move s _ _))
    | (top /= p) = error errorNotYourStack
    where
+      (Stack _ chs) = getBox s b
       top = getPlayer (head chs)
 
-performAction (Board _ _ _) (_, (Move (Stack si _) (Empty sf) _))
+performAction _ (_, (Move si sf _))
    | notStraight = error errorNotStraight
    where
       notStraight = checkNotStraight si sf
 
-performAction (Board _ _ _) (_, (Move (Stack si _) (Stack sf _) _))
-   | notStraight = error errorNotStraight
-   where
-      notStraight = checkNotStraight si sf
-
-performAction g (_, (Move (Stack si _) (Stack sf _) _)) | s1 == s2 = g
-performAction (Board b _ _) (_, (Move b1@(Stack si _) b2@(Empty sf) _))
+performAction g (_, (Move si sf _)) | si == sf = g
+performAction (Board b _ _) (_, (Move si sf _))
    | checkWallInPath path = error errorWallInPath
    where
-      path = getPath b1 b2 b
+      path = getPath si sf b
 
-performAction (Board b _ _) (_, (Move b1@(Stack si _) b2@(Stack sf _) _))
-   | checkWallInPath path = error errorWallInPath
+performAction (Board b _ _) (_, (Move si sf des))
+   | checkPathError stack path des b = error errorPath
    where
-      path = getPath b1 b2 b
+      path = getPath si sf b
+      stack = getBox si b
 
-performAction (Board b _ _) (_, (Move b1@(Stack si _) b2@(Empty _) des))
-   | checkPathError b1 path des b = error errorPath
+performAction (Board b _ _) (p, (Move si sf des)) = Board newB cs newP
    where
-      path = getPath b1 b2 b
-
-performAction (Board b _ _) (_, (Move b1@(Stack si _) b2@(Stack _ _) des))
-   | checkPathError b1 path des b = error errorPath
-   where
-      path = getPath b1 b2 b
-
-performAction (Board b cs _) (p, (Move b1@(Stack _ chs) b2@(Empty _) des)) = Board newB cs newP
-   where
+      stack = getBox s b
       newP = oppositePlayer p
-      path = getPath b1 b2 b
-      newB = replacePath des path b1 b
+      path = getPath si sf b
+      newB = replacePath des path stack b
+
+-- Devuelve True si un jugador se quedó sin fichas.
+noChips :: (PlayerChips, PlayerChips) -> Bool
+noChips (Whites w, Blacks b) = or [w == 0, b == 0]
+noChips _ = error errorWrongChipsFormat
 
 -- Retorna True si se cumple una condición de fin de juego.
 endGame :: TakGame -> Bool
-endGame (Board _ (Whites w, Blacks b) _) | or [w == 0, b == 0] = True
+endGame (Board _ chs _) | noChips chs = True
 -- Falta la condición de llegar de un lado a otro.
+
 {-
 
 A1 A2 A3
 B1 B2 B3
 C1 C2 C3
 
-A1: [ |BlackPLayer| , __WhitePLayer__]
+A1: [||BlackPLayer||, __WhitePLayer__]
 A2: [__WhitePlayer__]
 A3: []
 .
@@ -306,24 +327,24 @@ Jugador actual: WhitePlayer
 
 --------------------------- Move A1 A3 [1, 1] = Desapilar A1 a A3 dejando: [1, 1]
 --------------------------- Place (Stone WhitePLayer) A2 = Colocar __WhitePlayer__ en A2
+--------------------------- Place (Wall  BlackPlayer) A2 = Colocar ||WhitePlayer|| en A2
 -- Instancias.
 instance Show TakAction where
-   show (Move ini fin des) = "Desapilar " ++ show ini ++ " a " ++ show fin ++ " dejando: " ++ show des
-   show (Place ficha lugar) = "Colocar " ++ show ficha ++ " en " ++ show lugar
+   show (Move ini fin des) = "Desapilar " ++ ini ++ " a " ++ fin ++ " dejando: " ++ show des
+   show (Place ficha lugar) = "Colocar " ++ show ficha ++ " en " ++ lugar
  
 instance Show PlayerChips where
    show (Whites w) = "Fichas blancas: " ++ (show w)
    show (Blacks b) = "Fichas negras: " ++ (show b)
 
 instance Show Chip where
-   show (Wall player) = " |" ++ (show player) ++ "| " --"pared del jugador " ++ show player --
-   show (Stone player) = " __" ++ (show player) ++ "__ " --"plana del jugador " ++ show player 
+   show (Wall player) = "||" ++ (show player) ++ "||" --"pared del jugador " ++ show player --
+   show (Stone player) = "__" ++ (show player) ++ "__" --"plana del jugador " ++ show player 
 
 instance Show Box where
    show (Empty s) = s
    show (Stack s _) = s
 
--- (fst,snd)
 instance Show TakGame where
    show (Board boxes chips player) = (showBoxes boxes) ++ "\n" ++ (concat (map showBox boxes)) ++ ('\n':(show (fst chips)) ++ ('\n':(show (snd chips)))) ++ ('\n':"Jugador activo: " ++ (show player)) -- "Jugador activo: " ++ (show player) ++ ('\n':(showChips chips)) ++ "\nTablero:\n" ++ (showBoxes boxes)
 
@@ -347,7 +368,6 @@ actions (TakGame f) = zip players [if f then [] else [TakAction], []] --TODO
 estado de juego dado, y retorna el estado resultante. Se debe levantar un error si el jugador dado no es el
 jugador activo, si el juego está terminado, o si la acción no es realizable.-}
 next :: TakGame -> (TakPlayer, TakAction) -> TakGame
-next g (Nothing, _) = error errorEndGame
 next g t@(p, _)
    | (fromJust (activePlayer g)) == p = performAction g t -- hacer acción correspondiente.
    | otherwise = error errorNotYourTurn
@@ -356,7 +376,11 @@ next g t@(p, _)
 para cada jugador. Este valor es 1 si el jugador ganó, -1 si perdió y 0 si se empató. Si el juego no está
 terminado, se debe retornar una lista vacía.-}
 result :: TakGame -> [(TakPlayer, Int)]
-result (TakGame f) = zip players (if f then [] else [1, -1]) --TODO
+result (Board b _ _) | not (endGame b) = []
+result (Board b _ _) | tie b = zip players [0, 0] -- Empate.
+result (Board b chs _) = if won WhitePLayer b
+                         then zip players [1, -1]
+                         else zip players [-1, 1]
 
 {-Retorna el puntaje para todos los jugadores en el estado
 de juego dado. Esto es independiente de si el juego está terminado o no.-}
@@ -379,10 +403,22 @@ showAction a = show a
 {-Obtiene una acción a partir de un texto que puede haber sido
 introducido por el usuario en la consola.-}
 readAction :: String -> TakAction
---readAction s = 
+readAction s
+   | isMove = move
+   | isPlace = place
+   | otherwise = error errorMoveNotFound
+   where
+      isMove = isSubsequenceOf "Desapilar" s
+      isPlace = isSubsequenceOf "Colocar" s
+      place = Place chip f
+      player = if isSubsequenceOf "WhitePlayer" s then WhitePlayer else BlackPLayer
+      chip = if elem '|' s then Wall player else Stone player
+      f = if isMove then take 2 (drop 15 s) else drop 27 s
+      i = take 2 (drop 10 s)
+      des = read (drop 26 s) :: [Int]
+      move = Move i f des
 
-{- Determina a cuál jugador le toca mover, dado un estado de juego. OJO, SEGURO DESPUÉS SE DEVUELVA NOPLAYER PARA INDICAR QUE SE FINALIZA
-EL JUEGO (VER EL TIK-TAK-TOE). -}
+{- Determina a cuál jugador le toca mover, dado un estado de juego.-}
 activePlayer :: TakGame -> Maybe TakPlayer
 activePlayer g | endGame g = Nothing
 activePlayer (Board _ _ player) = Just player
