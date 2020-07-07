@@ -20,4 +20,6 @@ walks size paths
     | otherwise = walks size nextPaths
     where
         step = [next:path | path <- paths, next <- orthAdjacent size (head path)]
-        nextPaths = filter (\p -> (length p) <= 2 * (size - 1)) step
+        nextPaths = filter (\p -> (length p) <= 2 * (size - 1)) step --------------- 20 21 22 
+                                                                     --------------- 10 11 12
+                                                                     --------------- 00 01 02
