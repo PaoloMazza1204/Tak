@@ -75,7 +75,7 @@ showChips (a,b) = (show a) ++ ('\n':(show b))
 showBoxes :: [Box] -> String
 showBoxes xs = concat (if largo == 9 then separarEnN 3 lista else separarEnN 4 lista)
    where
-      lista = map show xs -- [A1, A2, A3, \n, B1, B2, B3, \n, C1, C2, C3]
+      lista = map ((++" ") . show) xs -- [A1 , A2 , A3 , \n , B1 , B2 , B3 , \n , C1 , C2 , C3 ]
       largo = length lista
       separarEnN n [] = []
       separarEnN n lista = (take n lista) ++ ("\n":(separarEnN n (drop n lista)))
@@ -92,8 +92,10 @@ isFromPlayer p (Stack _ (Wall r:_)) = p == r
 isFromPlayer _ _ = False
 
 -- Devuelve posibles movimientos.
-linkTraceWithMovement :: String -> [[Int]] -> String -> [TakAction]
-linkTraceWithMovement i des f = [Move i f d | d <- des, (distanceBetween i f) == (length d)] -- Posiblemente incorporar size.
+linkTraceWithMovement :: Int -> String -> [[Int]] -> String -> [TakAction]
+linkTraceWithMovement stackSize i des f = [Move i f d | d <- des, (distanceBetween i f) == (length d), (sumPath d) <= stackSize]
+   where
+      sumPath x = foldr1 (+) x
 
 -- Devuelve una lista con los posibles recorridos.
 possibleTraces :: Int -> [[Int]]
@@ -238,7 +240,7 @@ checkWallInPath path = or (map isWall path)
 
 -- Devuelve true si hay un error en el camino.
 checkPathError :: Box -> [Box] -> [Int]-> [Box] -> Bool
-checkPathError (Stack _ stck) path des b = condit1 || condit2 || condit3 || condit4 || condit5
+checkPathError (Stack _ stck) path des b = condit1 || condit2 || condit3 || condit4 -- || condit5
    where
       sumDes = foldr1 (+) des
       lenDes = length des
@@ -248,9 +250,9 @@ checkPathError (Stack _ stck) path des b = condit1 || condit2 || condit3 || cond
       n = floor (sqrt (fromIntegral lenBoxes))
       condit1 = or (map (\x -> x < 1) des) -- en 3x3 [1,0]
       condit2 = sumDes > n -- en 3x3 [2,2]
-      condit3 = lenDes >= n -- en 3x3 [1,1,1,1] error de usuario, no sabe la regla.
+      condit3 = lenDes >= n -- en 3x3 [1,1,1,1] error de usuario.
       condit4 = sumDes > lenStack -- en 3x3 [2,2] con una pila de 1 error de usuario.
-      condit5 = lenDes /= lenPath -- en 3x3 de A1 a A2 con des = [1,1,1,2,3,3] error de usuario.
+      --condit5 = lenDes /= lenPath -- en 3x3 de A1 a A2 con des = [1,1,1,2,3,3] error de usuario.
 
 -- Apila una casilla.
 modifyBox :: [Int] -> [Box] -> Box -> Int -> Box
@@ -261,7 +263,7 @@ modifyBox des path (Stack s chs) i = newStack
       addChips app (Empty s) = Stack s app
       addChips app (Stack s cs) = Stack s (app ++ cs)
 
--- Desapilar una pila y actualizar el tablero.
+-- Mueve una pila y actualiza el tablero.
 replacePath :: [Int] -> [Box] -> Box -> [Box] -> [Box]
 replacePath des path stck@(Stack s chs) b = resultB -- Devolver tablero.
    where
@@ -399,28 +401,28 @@ Fichas negras: 10
 Jugador actual: WhitePlayer
 -}
 
---------------------------- Move A1 A3 [1, 1] = Desapilar A1 a A3 dejando: [1, 1]
+--------------------------- Move A1 A3 [1, 1] = Mover A1 a A3 dejando [1, 1]
 --------------------------- Place (Stone WhitePlayer) A2 = Colocar __WhitePlayer__ en A2
 --------------------------- Place (Wall  BlackPlayer) A2 = Colocar ||WhitePlayer|| en A2
 -- Instancias.
 instance Show TakAction where
-   show (Move ini fin des) = "Desapilar " ++ ini ++ " a " ++ fin ++ " dejando: " ++ show des
-   show (Place ficha lugar) = "Colocar " ++ show ficha ++ " en " ++ lugar
+   show (Move ini fin des) = "Mover "++ini++" a "++fin++" dejando "++show des
+   show (Place ficha lugar) = "Colocar "++show ficha++" en "++lugar
  
 instance Show PlayerChips where
-   show (Whites w) = "Fichas blancas: " ++ (show w)
-   show (Blacks b) = "Fichas negras: " ++ (show b)
+   show (Whites w) = "Fichas blancas: "++(show w)
+   show (Blacks b) = "Fichas negras: "++(show b)
 
 instance Show Chip where
-   show (Wall player) = "||" ++ (show player) ++ "||" --"pared del jugador " ++ show player --
-   show (Stone player) = "__" ++ (show player) ++ "__" --"plana del jugador " ++ show player 
+   show (Wall player) = "||"++(show player)++"||"
+   show (Stone player) = "__"++(show player)++"__"
 
 instance Show Box where
    show (Empty s) = s
    show (Stack s _) = s
 
 instance Show TakGame where
-   show (Board boxes chips player) = (showBoxes boxes) ++ "\n" ++ (concat (map showBox boxes)) ++ ('\n':(show (fst chips)) ++ ('\n':(show (snd chips)))) ++ ('\n':"Jugador activo: " ++ (show player)) -- "Jugador activo: " ++ (show player) ++ ('\n':(showChips chips)) ++ "\nTablero:\n" ++ (showBoxes boxes)
+   show (Board boxes chips player) = '\n':(showBoxes boxes) ++ "\n" ++ (concat (map showBox boxes)) ++ ('\n':(show (fst chips)) ++ ('\n':(show (snd chips)))) ++ ('\n':"Jugador activo: " ++ (show player)++"\n") -- "Jugador activo: " ++ (show player) ++ ('\n':(showChips chips)) ++ "\nTablero:\n" ++ (showBoxes boxes)
 
 -- Funciones del Tak.
 
@@ -453,7 +455,7 @@ actions (Board b chs p) = [(p, actionsOfP), (p', actionsOfP')] -- [(WhitePlayer,
       rMovesP = concat (concat (map getRM stacksP))-- concat si es una [[TakActions]].
       rMovesP' = concat (concat (map getRM stacksP')) -- concat si es una [[TakActions]].
       pTraces = possibleTraces size
-      getRM (Stack s cs) = map (linkTraceWithMovement s pTraces) (realMovements s (length cs) (possibleMovements (head s) (last s) size)) -- [s1=["A3", "A2",...],s2 =["B1", "B2",...]]      
+      getRM (Stack s cs) = map (linkTraceWithMovement (length cs) s pTraces) (realMovements s (length cs) (possibleMovements (head s) (last s) size)) -- [s1=["A3", "A2",...],s2 =["B1", "B2",...]]      
       
       -- All Actions.
       actionsOfP = listPlacesP ++ rMovesP
@@ -502,14 +504,14 @@ readAction s
    | isPlace = place
    | otherwise = error errorMoveNotFound
    where
-      isMove = isSubsequenceOf "Desapilar" s
+      isMove = isSubsequenceOf "Mover" s
       isPlace = isSubsequenceOf "Colocar" s
       place = Place chip f
       player = if isSubsequenceOf "WhitePlayer" s then WhitePlayer else BlackPlayer
       chip = if elem '|' s then Wall player else Stone player
-      f = if isMove then take 2 (drop 15 s) else drop 27 s
-      i = take 2 (drop 10 s)
-      des = read (drop 26 s) :: [Int]
+      f = if isMove then take 2 (drop 11 s) else drop 27 s
+      i = take 2 (drop 6 s)
+      des = read (drop 22 s) :: [Int]
       move = Move i f des
 
 {- Determina a cuál jugador le toca mover, dado un estado de juego.-}
@@ -568,7 +570,7 @@ consoleAgent player state = do
       getLine
       return Nothing
    else do
-      putStrLn ("Select one move:" ++ concat [" "++ show m | m <- moves]) -- concat [", "]
+      putStrLn ("Select one move:" ++ concat [", "++ show m | m <- moves])
       line <- getLine
       let input = readAction line
       if elem input moves then return (Just input) else do 
