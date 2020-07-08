@@ -1,3 +1,7 @@
+module Roads
+( notSquaredWalks
+) where
+
 import Data.List ((\\))
 
 type Coord = (Int, Int)
@@ -39,10 +43,10 @@ notSquaredWalks size paths = filter notSquaredWalk (walks size paths)
 
 -- Si la caminata tiene forma de L la modifica para que quede recta.
 -- Se basa en que las caminatas con forma de L siempre aparecen al principio y final de la lista.
-modifyLWalk :: Path -> Path
+{-modifyLWalk :: Path -> Path
 modifyLWalk path = if hasLShape then modifiedpath else path
     where
         x = fst (last path)
         y = snd (last path)
         hasLShape = 
-        modifiedpath = drop 1 path
+        modifiedpath = drop 1 path-}
