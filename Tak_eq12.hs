@@ -191,14 +191,14 @@ checkNotStraight s1 s2 = diffChar && diffDigit
 
 -- Devuelve True si una casilla debería ser parte del recorrido de una fila.
 takeSameRow :: Box -> String -> String -> Bool
-takeSameRow (Empty s) si sf = (head si == head sf) && (condition)
+takeSameRow (Empty s) si sf = (head si == head sf) && (head si == head s) && (condition)
    where
       ni = read (tail si) :: Int
       nf = read (tail sf) :: Int
       ns = read (tail s) :: Int
       condition = if ni < nf then (ns > ni) && (ns <= nf) else (ns < ni) && (ns >= nf)
 
-takeSameRow (Stack s _) si sf = (head si == head sf) && (condition)
+takeSameRow (Stack s _) si sf = (head si == head sf) && (head si == head s) && (condition)
    where
       ni = read (tail si) :: Int
       nf = read (tail sf) :: Int
@@ -207,14 +207,14 @@ takeSameRow (Stack s _) si sf = (head si == head sf) && (condition)
 
 -- Devuelve True si una casilla debería ser parte del recorrido de una columna.
 takeSameColumn :: Box -> String -> String -> Bool
-takeSameColumn (Empty s) si sf = (tail si == tail sf) && (condition)
+takeSameColumn (Empty s) si sf = (tail si == tail sf) && (tail si == tail s) && (condition)
    where
       ni = ord (head si)
       nf = ord (head sf)
       ns = ord (head s)
       condition = if ni < nf then (ns > ni) && (ns <= nf) else (ns < ni) && (ns >= nf)
 
-takeSameColumn (Stack s _) si sf = (tail si == tail sf) && (condition)
+takeSameColumn (Stack s _) si sf = (tail si == tail sf) && (tail si == tail s) && (condition)
    where
       ni = ord (head si)
       nf = ord (head sf)
@@ -257,8 +257,26 @@ checkPathError (Stack _ stck) path des b = or [condit1, condit2, condit3, condit
 modifyBox :: [Int] -> [Box] -> Box -> Int -> Box
 modifyBox des path (Stack s chs) i = newStack
    where
-      taken = take (des!!i) chs
-      newStack = addChips taken (path!!i)
+      newStack = addChips taken (path!!i) -- [B1, C1]  des = [1,1] chs = [White, Black]
+      sumDes = sum des
+      firstOnHand = take sumDes chs
+      firstDrop = if (length firstOnHand) == des!!0
+                  then firstOnHand
+                  else drop ((length firstOnHand) - des!!0) firstOnHand -- if (length chs) > (des!!0) then drop (des!!0) chs else take desI chs -- [White]
+      secondOnHand = firstOnHand --take (sumDes - des!!0) chs
+      secondDrop = if True --(length secondOnHand) == des!!1
+                   then [Wall WhitePlayer] --secondOnHand
+                   else drop ((length secondOnHand) - des!!1) secondOnHand -- take ((sum des) - (des!!0)) chs
+      thirdOnHand = take (sumDes - des!!0 - des!!1) chs
+      thirdDrop = if length thirdOnHand == des!!2
+                  then thirdOnHand
+                  else drop (des!!2) thirdOnHand
+      --secondDrop = if (length firstDrop) > (des!!1) then drop (des!!1) firstDrop else take desI firstDrop 
+      --thirdDrop = if (length secondDrop) > (des!!2) then drop (des!!2) secondDrop else take desI secondDrop
+      taken = case i of
+                  0 -> firstDrop
+                  1 -> secondDrop
+                  2 -> thirdDrop
       addChips app (Empty s) = Stack s app
       addChips app (Stack s cs) = Stack s (app ++ cs)
 
@@ -267,15 +285,15 @@ replacePath :: [Int] -> [Box] -> Box -> [Box] -> [Box]
 replacePath des path stck@(Stack s chs) b = resultB -- Devolver tablero.
    where
       is3x3 = (length b) == 9
-      modifiedPath = map (modifyBox des path stck) [0..((length des) - 1)]
-      sumPath = foldr1 (+) des
-      modifiedStack = if ((length chs) - sumPath) > 0 then Stack s (drop sumPath chs) else Empty s
+      modifiedPath = map (modifyBox des path stck) [0..((length des) - 1)] -- [0,1] -- R=[Stack "B2" [chsB1], Stack "C2" [chsB2]]
+      sumPath = sum des
+      modifiedStack = if (length chs) > sumPath then Stack s (drop sumPath chs) else Empty s
       bWithStack = map (ifStackReplace stck) b -- Mapear y reemplazar la pila en el tablero.
       ifStackReplace (Stack s1 _) b2@(Stack s2 _) = if s1 == s2
                                                     then modifiedStack
                                                     else b2
       ifStackReplace _ b2 = b2
-      bWithPathOfPaths = map (ifInPathReplace modifiedPath) bWithStack -- Mapear y reemplazar la stack modificada.
+      bWithPathOfPaths = map (ifInPathReplace modifiedPath) bWithStack -- Mapear y reemplazar el camino modificado. -- [[Box1, Box2], [...]]
       ifInPathReplace p box = map (ifMatchReplace box) p
       ifMatchReplace b1@(Stack s1 _) b2@(Stack s2 _) = if s1 == s2
                                                        then b2
@@ -283,7 +301,6 @@ replacePath des path stck@(Stack s chs) b = resultB -- Devolver tablero.
       ifMatchReplace b1@(Empty s1) b2@(Stack s2 _) = if s1 == s2
                                                      then b2
                                                      else b1
-      ifMatchReplace _ b2 = b2
       listCoords3x3 = [x:[y] | x <- ['A'..'C'], y <- ['1'..'3']]
       listCoords4x4 = [x:[y] | x <- ['A'..'D'], y <- ['1'..'4']]
       listOfCoords = if is3x3 then listCoords3x3 else listCoords4x4
@@ -395,12 +412,16 @@ verifyPath p path = and (map (topIsFlatPlayer p) path)
 endGame :: TakGame -> (Bool, TakPlayer) -- Bool
 endGame (Board _ chs p) | noChips chs = (True, p) -- Un jugador sin fichas.
 -- Falta la condición de llegar de un lado a otro.
-endGame (Board b _ p) = (res, p) --(or (map and playerWalks), p)
+endGame (Board b _ p) = (res, winner) --(or (map and playerWalks), p)
    where
+      p' = oppositePlayer p
       size = if (length b) == 9 then 3 else 4
       possibleWalks = if size == 3 then walks3x3 else walks4x4
       boxesRoad = map (map (`getBox` b)) possibleWalks -- [[Empty s, Stack, ...], [Empty s, Empty, ...], [Stack s chs, ...]]
-      res = or (map (verifyPath p) boxesRoad) -- [True, False, False]
+      resP = or (map (verifyPath p) boxesRoad) -- [True, False, False]
+      resP' = or (map (verifyPath p') boxesRoad) -- [True, False, False]
+      res = resP || resP'
+      winner = if resP && resP' then p else (if resP then p else p')
 
       {-coordsTranslated = map (map (translateCoords size)) possibleWalks -- [["A1", "A2", "A3"], ["A1", "B1", "C1"]]
       -- recorrer coordsTranslated y para cada recorrido chequear si en el tablero todos son (filter) toppeados con Stone de un player.
@@ -508,8 +529,8 @@ para cada jugador. Este valor es 1 si el jugador ganó, -1 si perdió y 0 si se 
 terminado, se debe retornar una lista vacía.-}
 result :: TakGame -> [(TakPlayer, Int)]
 result g | not (fst (endGame g)) = [] -- No finalizado.
-result g | tie g = zip players [0, 0] -- Empate.
-result g@(Board b _ p) = if (p == WhitePlayer) then zip players [1, -1] else zip players [-1, 1]
+result g@(Board _ chs _) | (noChips chs) && (tie g) = zip players [0, 0] -- Empate.
+result g@(Board b _ p) = if (p == BlackPlayer) then zip players [1, -1] else zip players [-1, 1]
 
 {-Retorna el puntaje para todos los jugadores en el estado
 de juego dado. Esto es independiente de si el juego está terminado o no.-}
@@ -591,7 +612,6 @@ run3x3OnConsole = runOnConsole beginning3x3
 run4x4OnConsole :: IO [(TakPlayer, Int)]
 run4x4OnConsole = runOnConsole beginning4x4
 
-
 {- El agente de consola ´consoleAgent´ muestra el estado de juego y los movimientos disponibles por
 consola, y espera una acción por entrada de texto.
 -}
@@ -603,7 +623,7 @@ consoleAgent player state = do
       getLine
       return Nothing
    else do
-      putStrLn ("Select one move:" ++ concat [", "++ show m | m <- moves])
+      putStrLn ("Select one move:" ++ (drop 1 (concat [", "++ show m | m <- moves])))
       line <- getLine
       let input = readAction line
       if elem input moves then return (Just input) else do 
