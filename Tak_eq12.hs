@@ -85,7 +85,7 @@ showBox :: Box -> String
 showBox (Empty s) = s ++ ": []\n"
 showBox (Stack s fichas) = s ++ ": " ++ (show (map show fichas)) ++ "\n"
 
--- Devuelve True si la ficha pertenece al jugador.
+-- Devuelve True si la pila pertenece al jugador.
 isFromPlayer :: TakPlayer -> Box -> Bool
 isFromPlayer p (Stack _ (Stone r:_)) = p == r
 isFromPlayer p (Stack _ (Wall r:_)) = p == r
@@ -240,7 +240,7 @@ checkWallInPath path = or (map isWall path)
 
 -- Devuelve true si hay un error en el camino.
 checkPathError :: Box -> [Box] -> [Int]-> [Box] -> Bool
-checkPathError (Stack _ stck) path des b = condit1 || condit2 || condit3 || condit4 -- || condit5
+checkPathError (Stack _ stck) path des b = or [condit1, condit2, condit3, condit4]
    where
       sumDes = foldr1 (+) des
       lenDes = length des
@@ -252,7 +252,6 @@ checkPathError (Stack _ stck) path des b = condit1 || condit2 || condit3 || cond
       condit2 = sumDes > n -- en 3x3 [2,2]
       condit3 = lenDes >= n -- en 3x3 [1,1,1,1] error de usuario.
       condit4 = sumDes > lenStack -- en 3x3 [2,2] con una pila de 1 error de usuario.
-      --condit5 = lenDes /= lenPath -- en 3x3 de A1 a A2 con des = [1,1,1,2,3,3] error de usuario.
 
 -- Apila una casilla.
 modifyBox :: [Int] -> [Box] -> Box -> Int -> Box
@@ -345,11 +344,30 @@ performAction (Board b cs _) (p, (Move si sf des)) = Board newB cs newP -- Movim
       path = getPath si sf b
       newB = replacePath des path stack b
 
+-- Posibles caminos derechos 3x3.
+rows3x3 = [x:[y] | x <- ['A'..'C'], y <- ['1'..'3']] -- -> [A1, A2, A3, A4, B1, B2, B3...]
+straightRows3x3 = [(take 3 rows3x3)] : [(take 3 (drop 3 rows3x3))] : [(drop 6 rows3x3)] : []
+columns3x3 = [x:[y] | y <- ['1'..'3'], x <- ['A'..'C']] -- -> [A1, B1, C1, A2, B2, ...]
+straightColumns3x3 = [(take 3 columns3x3)] : [(take 3 (drop 3 columns3x3))] : [(drop 6 columns3x3)] : []
+straightRoads3x3 = (concat straightRows3x3) ++ (concat straightColumns3x3)
+-- Posibles caminos derechos 4x4.
+rows4x4 = [x:[y] | x <- ['A'..'D'], y <- ['1'..'4']] -- -> [A1, A2, A3, A4, B1, B2, B3...]
+straightRows4x4 = [(take 4 rows4x4)] : [(take 4 (drop 4 rows4x4))] : [(take 4 (drop 8 rows4x4))] : [(drop 12 rows4x4)] : []
+columns4x4 = [x:[y] | y <- ['1'..'4'], x <- ['A'..'D']] -- -> [A1, B1, C1, A2, B2, ...]
+straightColumns4x4 = [(take 4 columns4x4)] : [(take 4 (drop 4 columns4x4))] : [(take 4 (drop 8 columns4x4))] : [(drop 12 columns4x4)] : []
+straightRoads4x4 = (concat straightRows4x4) ++ (concat straightColumns4x4)
+
 -- Posibles caminos 3x3.
-walks3x3 = (notSquaredWalks 3 [[(0,0)]]) ++ (notSquaredWalks 3 [[(0,1)]]) ++ (notSquaredWalks 3 [[(0,2)]]) ++ (notSquaredWalks 3 [[(1,2)]]) ++ (notSquaredWalks 3 [[(2,2)]])
+--straightColumns3x3 ++
+walks3x3Coords = (notSquaredWalks 3 [[(0,0)]]) ++ (notSquaredWalks 3 [[(0,1)]]) ++ (notSquaredWalks 3 [[(0,2)]]) ++ (notSquaredWalks 3 [[(1,2)]]) ++ (notSquaredWalks 3 [[(2,2)]])
+mappedCoords3x3 = map (map (translateCoords 3)) walks3x3Coords
+walks3x3 = mappedCoords3x3 ++ straightRoads3x3
 
 -- Posibles caminos 4x4.
-walks4x4 = (notSquaredWalks 4 [[(0,0)]]) ++ (notSquaredWalks 4 [[(0,1)]]) ++ (notSquaredWalks 4 [[(0,2)]]) ++ (notSquaredWalks 4 [[(0,3)]]) ++ (notSquaredWalks 4 [[(1,3)]]) ++ (notSquaredWalks 4 [[(2,3)]]) ++ (notSquaredWalks 4 [[(3,3)]])
+--straightColumns4x4 ++ 
+walks4x4Coords = (notSquaredWalks 4 [[(0,0)]]) ++ (notSquaredWalks 4 [[(0,1)]]) ++ (notSquaredWalks 4 [[(0,2)]]) ++ (notSquaredWalks 4 [[(0,3)]]) ++ (notSquaredWalks 4 [[(1,3)]]) ++ (notSquaredWalks 4 [[(2,3)]]) ++ (notSquaredWalks 4 [[(3,3)]])
+mappedCoords4x4 = map (map (translateCoords 4)) walks4x4Coords
+walks4x4 = mappedCoords4x4 ++ straightRoads4x4
 
 -- Devuelve True si un jugador se quedó sin fichas.
 noChips :: (PlayerChips, PlayerChips) -> Bool
@@ -369,18 +387,25 @@ translateCoords size (x, y) = (toRow y):(toColumn x)
 
       toColumn a = show (a + 1)
 
+-- Devuelve True si el camino es ganador.
+verifyPath :: TakPlayer -> [Box] -> Bool
+verifyPath p path = and (map (topIsFlatPlayer p) path)
+
 -- Retorna True si se cumple una condición de fin de juego.
 endGame :: TakGame -> (Bool, TakPlayer) -- Bool
 endGame (Board _ chs p) | noChips chs = (True, p) -- Un jugador sin fichas.
 -- Falta la condición de llegar de un lado a otro.
-endGame (Board b _ p) = (or (map and playerWalks), p)
+endGame (Board b _ p) = (res, p) --(or (map and playerWalks), p)
    where
       size = if (length b) == 9 then 3 else 4
       possibleWalks = if size == 3 then walks3x3 else walks4x4
-      coordsTranslated = map (map (translateCoords size)) possibleWalks -- [["A1", "A2", "A3"], ["A1", "B1", "C1"]]
-      -- recorrer coordsTranslated y para recorrido chequear si en el tablero todos son (filter) toppeados con Stone de un player.
+      boxesRoad = map (map (`getBox` b)) possibleWalks -- [[Empty s, Stack, ...], [Empty s, Empty, ...], [Stack s chs, ...]]
+      res = or (map (verifyPath p) boxesRoad) -- [True, False, False]
+
+      {-coordsTranslated = map (map (translateCoords size)) possibleWalks -- [["A1", "A2", "A3"], ["A1", "B1", "C1"]]
+      -- recorrer coordsTranslated y para cada recorrido chequear si en el tablero todos son (filter) toppeados con Stone de un player.
       boxesWalks = map (map (`getBox` b)) coordsTranslated -- [[Empty "A1", Empty "A2", Stack "A3" chs], ...]
-      playerWalks = map (map (topIsFlatPlayer p)) boxesWalks -- [[True, True, False], [True, True, True]]
+      playerWalks = map (map (topIsFlatPlayer p)) boxesWalks -- [[True, True, False], [True, True, True]]-}
 
 {-
 
@@ -438,6 +463,14 @@ beginning4x4 = Board (tableroVacio4x4) (Whites 15, Blacks 15) firstPlayer
 cada jugador. Si el jugador está activo, la lista asociada debe incluir todos sus posibles movimientos para
 el estado de juego dado. Sino la lista debe estar vacía.-}
 actions :: TakGame -> [(TakPlayer, [TakAction])]
+actions (Board board (Whites w, Blacks b) p) | w == 10 || b == 10 = [(p, listPlacesP), (p', listPlacesP')]
+   where
+      p' = oppositePlayer p
+      empties = filter isEmpty board -- [Empty "A2", Empty "B3"] -> [[Place (Stone player) "A2", Place (Wall player) "A2"]]
+      listPlacesP = concat (map (getPlacesFor p) empties)
+      listPlacesP' = concat (map (getPlacesFor p') empties)
+      getPlacesFor pl (Empty s) = (Place (Stone (oppositePlayer pl)) s):[(Place (Wall (oppositePlayer pl)) s)] -- [[Place (Stone player) "A2", Place (Wall player) "A2"]]
+
 actions (Board b chs p) = [(p, actionsOfP), (p', actionsOfP')] -- [(WhitePlayer, [acciones]), (BlackPlayer, [acciones])]
    where
       size = if length b == 9 then 3 else 4
