@@ -28,6 +28,8 @@ disponible junto con el `ghci`.
 
 {- Lo que verás cuando juegas (3x3):
 
+Si deseas abandonar el juego escribe: Salir
+
 A1 A2 A3
 B1 B2 B3    <- Casillero.
 C1 C2 C3
@@ -49,7 +51,6 @@ Fichas blancas: 10 <- Fichas restantes del jugador WhitePlayer.
 Fichas negras: 10 <- Fichas restantes del jugador BlackPlayer.
 Jugador actual: WhitePlayer <- Jugador actual.
 -}
-
 
 ---------------------- Lógica de juego ------------------------------------------------------------
 
@@ -91,6 +92,7 @@ errorWallInPath = "Movimiento no válido, hay un muro en el camino."
 errorPath = "Desplazamiento no válido."
 errorMoveNotFound = "Movimiento no válido, quizá escribiste mal el movimiento."
 errorInvalidCoords = "Coordenadas no válidas."
+stringSalir = "Has cortado la partida."
 
 -- Format para una tupla de fichas de los jugadores.
 showChips :: (PlayerChips, PlayerChips) -> String
@@ -554,9 +556,10 @@ instance Show Box where
 
 sbs_ = showBoxes
 sb_ = showBox
-ap = "\nJugador activo: "
+ap g@(Board _ _ p) = if not (fst (endGame g)) then "\nJugador activo: "++(show p) else "\n¡Juego finalizado!"
+strSalir = "\nSi deseas abandonar el juego escribe: Salir\n\n"
 instance Show TakGame where
-   show (Board b cs p) = '\n':(sbs_ b)++"\n"++(concat (map sb_ b))++('\n':(show (fst cs))++('\n':(show (snd cs))))++ap++(show p)++"\n"
+   show g@(Board b cs p) = strSalir++(sbs_ b)++"\n"++(concat (map sb_ b))++('\n':(show (fst cs))++('\n':(show (snd cs))))++(ap g)++"\n"
 
 -- El estado inicial del juego Tak con un tablero de 3x3, con el tablero vacío.
 beginning3x3 :: TakGame
@@ -626,7 +629,9 @@ terminado, se debe retornar una lista vacía.-}
 result :: TakGame -> [(TakPlayer, Int)]
 result g | not (fst (endGame g)) = [] -- No finalizado.
 result g@(Board _ chs _) | (noChips chs) && (tie g) = zip players [0, 0] -- Empate.
-result g@(Board b _ p) = if (p == BlackPlayer) then zip players [1, -1] else zip players [-1, 1]
+result g@(Board b _ p) = if (winner == WhitePlayer) then zip players [1, -1] else zip players [-1, 1]
+   where
+      winner = snd (endGame g)
 
 {-Retorna el puntaje para todos los jugadores en el estado
 de juego dado. Esto es independiente de si el juego está terminado o no.-}
@@ -652,9 +657,11 @@ readAction :: String -> TakAction
 readAction s
    | isMove = move
    | isPlace = place
-   | otherwise = error errorMoveNotFound
+   | salir = error stringSalir
+   | otherwise = Place (Wall WhitePlayer) "ABCDE" -- Simula un movimiento no válido.
    where
-      isMove = isSubsequenceOf "Mover" s
+      salir = isSubsequenceOf "Salir" s
+      isMove = (isSubsequenceOf "Mover" s) && (isSubsequenceOf "dejando" s)
       isPlace = isSubsequenceOf "Colocar" s
       place = Place chip f
       player = if isSubsequenceOf "WhitePlayer" s then WhitePlayer else BlackPlayer
