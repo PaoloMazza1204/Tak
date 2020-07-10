@@ -1,6 +1,6 @@
 {- Tak ------------------------------------------------------------------------------------------
- 
-Plantilla de código para el proyecto del curso de 2020 de _Programación Funcional_ para las carreras 
+
+Plantilla de código para el proyecto del curso de 2020 de _Programación Funcional_ para las carreras
 de Ingeniería y Licenciatura en Informática de la FIT (UCU).
 Los docentes no garantizan que este código esté libre de errores. De encontrar problemas, por favor
 reportarlos a la cátedra.
@@ -15,13 +15,13 @@ import Data.Char (ord)
 import System.Random
 import Roads -- Librería con código relevante para calcular los posibles caminos ganadores.
 
-{- Es posible que el paquete `System.Random` no esté disponible si se instaló el core de la Haskell 
+{- Es posible que el paquete `System.Random` no esté disponible si se instaló el core de la Haskell
 Platform en el sistema. Para instalarlo, ejecutar los siguientes comandos:
 
 > cabal update
 > cabal install random
 
-La herramienta `cabal` es un manejador de paquetes usado por la plataforma Haskell. Debería estar 
+La herramienta `cabal` es un manejador de paquetes usado por la plataforma Haskell. Debería estar
 disponible junto con el `ghci`.
 
 -}
@@ -67,6 +67,12 @@ emptyBoard3x3 = [Empty s | s <- boardStrings3x3]
 boardStrings4x4 = [x ++ y | x <- ["A", "B", "C", "D"], y <- ["1", "2", "3", "4"]]
 emptyBoard4x4 = [Empty s | s <- boardStrings4x4]
 
+boardStrings5x5 = [x ++ y | x <- ["A", "B", "C", "D", "E"], y <- ["1", "2", "3", "4", "5"]]
+emptyBoard5x5 = [Empty s | s <- boardStrings5x5]
+
+boardStrings6x6 = [x ++ y | x <- ["A", "B", "C", "D", "E", "F"], y <- ["1", "2", "3", "4", "5", "6"]]
+emptyBoard6x6 = [Empty s | s <- boardStrings6x6]
+
 player1 = WhitePlayer
 player2 = BlackPlayer
 players = [player1, player2] -- Jugadores.
@@ -92,7 +98,11 @@ showChips (a,b) = (show a) ++ ('\n':(show b))
 
 -- Format para un tablero.
 showBoxes :: [Box] -> String
-showBoxes xs = concat (if largo == 9 then separarEnN 3 lista else separarEnN 4 lista)
+showBoxes xs
+   | largo == 9 = concat (separarEnN 3 lista)
+   | largo == 16 = concat (separarEnN 4 lista)
+   | largo == 25 = concat (separarEnN 5 lista)
+   | otherwise = concat (separarEnN 6 lista)
    where
       lista = map ((++" ") . show) xs
       largo = length lista
@@ -144,9 +154,9 @@ realMovements pos stackSize possibles = res
 possibleMovements :: Char -> Char -> Int -> [String]
 possibleMovements a b boardSize = result
    where
-      result = [x:[y] | x <- ['A'..lastChar], y <- ['1'..lastDigit], (x == a || y == b)] 
-      lastChar = if boardSize == 3 then 'C' else 'D'
-      lastDigit = if boardSize == 3 then '3' else '4'
+      result = [x:[y] | x <- ['A'..lastChar], y <- ['1'..lastDigit], (x == a || y == b)]
+      lastChar = if boardSize == 3 then 'C' else (if boardSize == 4 then 'D' else (if boardSize == 5 then 'E' else 'F'))
+      lastDigit = if boardSize == 3 then '3' else (if boardSize == 4 then '4' else (if boardSize == 5 then '5' else '6'))
 
 -- Devuelve true si una casilla es vacía.
 isEmpty :: Box -> Bool
@@ -301,10 +311,20 @@ modifyBox des path (Stack s chs) i = newStack
       thirdDrop = if length thirdOnHand == des!!2
                   then thirdOnHand
                   else drop (des!!2) thirdOnHand
+      fourthOnHand = take (sumDes - des!!0 - des!!1 - des!!2) chs
+      fourthDrop = if length fourthOnHand == des!!3
+                  then fourthOnHand
+                  else drop (des!!3) fourthOnHand
+      fifthOnHand = take (sumDes - des!!0 - des!!1 - des!!2 - des!!3) chs
+      fifthDrop = if length fifthOnHand == des!!4
+                  then fifthOnHand
+                  else drop (des!!4) fifthOnHand
       taken = case i of
                   0 -> firstDrop
                   1 -> secondDrop
                   2 -> thirdDrop
+                  3 -> fourthDrop
+                  4 -> fifthDrop
       addChips app (Empty s) = Stack s app
       addChips app (Stack s cs) = Stack s (app ++ cs)
 
@@ -313,6 +333,8 @@ replacePath :: [Int] -> [Box] -> Box -> [Box] -> [Box]
 replacePath des path stck@(Stack s chs) b = resultB
    where
       is3x3 = (length b) == 9
+      is4x4 = (length b) == 16
+      is5x5 = (length b) == 25
       modifiedPath = map (modifyBox des path stck) [0..((length des) - 1)]
       sumPath = sum des
       modifiedStack = if (length chs) > sumPath then Stack s (drop sumPath chs) else Empty s
@@ -331,7 +353,9 @@ replacePath des path stck@(Stack s chs) b = resultB
                                                      else b1
       listCoords3x3 = [x:[y] | x <- ['A'..'C'], y <- ['1'..'3']]
       listCoords4x4 = [x:[y] | x <- ['A'..'D'], y <- ['1'..'4']]
-      listOfCoords = if is3x3 then listCoords3x3 else listCoords4x4
+      listCoords5x5 = [x:[y] | x <- ['A'..'F'], y <- ['1'..'5']]
+      listCoords6x6 = [x:[y] | x <- ['A'..'G'], y <- ['1'..'6']]
+      listOfCoords = if is3x3 then listCoords3x3 else (if is4x4 then listCoords4x4 else (if is5x5 then listCoords5x5 else listCoords6x6))
       resultB = zipWith getBox listOfCoords bWithPathOfPaths
 
 {- Actualiza el tablero a partir de un movimiento válido.
@@ -403,6 +427,8 @@ translateCoords size (x, y) = (toRow y):(toColumn x)
          | a == (size - 2) = 'B'
          | a == (size - 3) = 'C'
          | a == (size - 4) = 'D'
+         | a == (size - 5) = 'E'
+         | a == (size - 6) = 'F'
          | otherwise = error errorInvalidCoords
 
       toColumn a = show (a + 1)
@@ -420,6 +446,20 @@ straightRows4x4 = [(take 4 rows4x4)]:[(take 4 (drop 4 rows4x4))]:[(take 4 (drop 
 columns4x4 = [x:[y] | y <- ['1'..'4'], x <- ['A'..'D']] -- -> [A1, B1, C1, D1, A2, B2, ...]
 straightColumns4x4 = [(take 4 columns4x4)]:[(take 4 (drop 4 columns4x4))]:[(take 4 (drop 8 columns4x4))]:[(drop 12 columns4x4)]:[]
 straightRoads4x4 = (concat straightRows4x4) ++ (concat straightColumns4x4)
+
+-- Posibles caminos derechos 5x5.
+rows5x5 = [x:[y] | x <- ['A'..'E'], y <- ['1'..'5']] -- -> [A1, A2, A3, A4, B1, B2, B3...]
+straightRows5x5 = [(take 5 rows5x5)] : [(take 5 (drop 5 rows5x5))] : [(take 5 (drop 10 rows5x5))] : [(take 5 (drop 15 rows5x5))]  : [(drop 20 rows5x5)] : []
+columns5x5 = [x:[y] | y <- ['1'..'5'], x <- ['A'..'E']] -- -> [A1, B1, C1, A2, B2, ...]
+straightColumns5x5 = [(take 5 columns5x5)] : [(take 5 (drop 5 columns5x5))] : [(take 5 (drop 10 columns5x5))] : [(take 5 (drop 15 columns5x5))]  : [(drop 20 columns5x5)] : []
+straightRoads5x5 = (concat straightRows5x5) ++ (concat straightColumns5x5)
+
+-- Posibles caminos derechos 6x6.
+rows6x6 = [x:[y] | x <- ['A'..'F'], y <- ['1'..'6']] -- -> [A1, A2, A3, A4, B1, B2, B3...]
+straightRows6x6 = [(take 6 rows6x6)] : [(take 6 (drop 6 rows6x6))] : [(take 6 (drop 12 rows6x6))] : [(take 6 (drop 18 rows6x6))]  : [(take 6 (drop 24 rows6x6))] : [(drop 30 rows6x6)] : []
+columns6x6 = [x:[y] | y <- ['1'..'6'], x <- ['A'..'F']] -- -> [A1, B1, C1, A2, B2, ...]
+straightColumns6x6 = [(take 6 columns6x6)] : [(take 6 (drop 6 columns6x6))] : [(take 6 (drop 12 columns6x6))] : [(take 6 (drop 18 columns6x6))]  : [(take 6 (drop 24 columns6x6))] : [(drop 30 columns6x6)] : []
+straightRoads6x6 = (concat straightRows6x6) ++ (concat straightColumns6x6)
 
 -- Posibles caminos 3x3.
 roads3x3From00 = notSquaredWalks 3 [[(0,0)]]
@@ -445,6 +485,38 @@ walks4x4Coords = roads4x4From00 ++ roads4x4From01 ++ roads4x4From02 ++ roads4x4F
 mappedCoords4x4 = map (map (translateCoords 4)) walks4x4Coords
 walks4x4 = mappedCoords4x4 ++ straightRoads4x4
 
+-- Posibles caminos 5x5.
+roads5x5From00 = notSquaredWalks 5 [[(0,0)]]
+roads5x5From01 = notSquaredWalks 5 [[(0,1)]]
+roads5x5From02 = notSquaredWalks 5 [[(0,2)]]
+roads5x5From03 = notSquaredWalks 5 [[(0,3)]]
+roads5x5From04 = notSquaredWalks 5 [[(0,4)]]
+roads5x5From14 = notSquaredWalks 5 [[(1,4)]]
+roads5x5From24 = notSquaredWalks 5 [[(2,4)]]
+roads5x5From34 = notSquaredWalks 5 [[(3,4)]]
+roads5x5From44 = notSquaredWalks 5 [[(4,4)]]
+
+walks5x5Coords = roads5x5From00 ++ roads5x5From01 ++ roads5x5From02 ++ roads5x5From03 ++ roads5x5From04 ++ roads5x5From14 ++ roads5x5From24 ++ roads5x5From34 ++ roads5x5From44
+mappedCoords5x5 = map (map (translateCoords 5)) walks5x5Coords
+walks5x5 = mappedCoords5x5 ++ straightRoads5x5
+
+-- Posibles caminos 6x6.
+roads6x6From00 = notSquaredWalks 6 [[(0,0)]]
+roads6x6From01 = notSquaredWalks 6 [[(0,1)]]
+roads6x6From02 = notSquaredWalks 6 [[(0,2)]]
+roads6x6From03 = notSquaredWalks 6 [[(0,3)]]
+roads6x6From04 = notSquaredWalks 6 [[(0,4)]]
+roads6x6From05 = notSquaredWalks 6 [[(0,5)]]
+roads6x6From15 = notSquaredWalks 6 [[(1,5)]]
+roads6x6From25 = notSquaredWalks 6 [[(2,5)]]
+roads6x6From35 = notSquaredWalks 6 [[(3,5)]]
+roads6x6From45 = notSquaredWalks 6 [[(4,5)]]
+roads6x6From55 = notSquaredWalks 6 [[(5,5)]]
+
+walks6x6Coords = roads6x6From00 ++ roads6x6From01 ++ roads6x6From02 ++ roads6x6From03 ++ roads6x6From04 ++ roads6x6From05 ++ roads6x6From15 ++ roads6x6From25 ++ roads6x6From35 ++ roads6x6From45 ++ roads6x6From55
+mappedCoords6x6 = map (map (translateCoords 6)) walks6x6Coords
+walks6x6 = mappedCoords6x6 ++ straightRoads6x6
+
 -- Devuelve True si el camino es ganador.
 verifyPath :: TakPlayer -> [Box] -> Bool
 verifyPath p path = and (map (topIsFlatPlayer p) path)
@@ -455,8 +527,8 @@ endGame (Board _ chs p) | noChips chs = (True, p) -- Un jugador sin fichas.
 endGame (Board b _ p) = (res, winner)
    where
       p' = oppositePlayer p
-      size = if (length b) == 9 then 3 else 4
-      possibleWalks = if size == 3 then walks3x3 else walks4x4
+      size = if (length b) == 9 then 3 else (if (length b) == 16 then 4 else (if (length b) == 25 then 5 else 6))
+      possibleWalks = if size == 3 then walks3x3 else (if size == 4 then walks4x4 else (if size == 25 then walks5x5 else walks6x6))
       boxesRoad = map (map (`getBox` b)) possibleWalks
       resP = or (map (verifyPath p) boxesRoad)
       resP' = or (map (verifyPath p') boxesRoad)
@@ -467,7 +539,7 @@ endGame (Board b _ p) = (res, winner)
 instance Show TakAction where
    show (Move ini fin des) = "Mover "++ini++" a "++fin++" dejando "++show des
    show (Place ficha lugar) = "Colocar "++show ficha++" en "++lugar
- 
+
 instance Show PlayerChips where
    show (Whites w) = "Fichas blancas: "++(show w)
    show (Blacks b) = "Fichas negras: "++(show b)
@@ -494,6 +566,15 @@ beginning3x3 = Board (emptyBoard3x3) (Whites 10, Blacks 10) firstPlayer
 beginning4x4 :: TakGame
 beginning4x4 = Board (emptyBoard4x4) (Whites 15, Blacks 15) firstPlayer
 
+
+-- El estado inicial del juego Tak con un tablero de 5x5, con el tablero vacío.
+beginning5x5 :: TakGame
+beginning5x5 = Board (emptyBoard5x5) (Whites 21, Blacks 21) firstPlayer
+
+-- El estado inicial del juego Tak con un tablero de 6x6, con el tablero vacío.
+beginning6x6 :: TakGame
+beginning6x6 = Board (emptyBoard6x6) (Whites 30, Blacks 30) firstPlayer
+
 {-La lista debe incluir una y solo una tupla para
 cada jugador. Si el jugador está activo, la lista asociada debe incluir todos sus posibles movimientos para
 el estado de juego dado. Sino la lista debe estar vacía.-}
@@ -510,7 +591,7 @@ actions (Board board (Whites w, Blacks b) p)
 
 actions (Board b chs p) = [(p, actionsOfP), (p', actionsOfP')]
    where
-      size = if length b == 9 then 3 else 4
+      size = if (length b) == 9 then 3 else (if (length b) == 16 then 4 else (if (length b) == 25 then 5 else 6))
       p' = oppositePlayer p
       -- Places.
       empties = filter isEmpty b
@@ -526,7 +607,7 @@ actions (Board b chs p) = [(p, actionsOfP), (p', actionsOfP')]
       rMovesP' = concat (concat (map getRM stacksP'))
       pTraces = possibleTraces size
       getRM (Stack s cs) = map (linkTraceWithMovement (length cs) s pTraces) (realMovements s (length cs) (possibleMovements (head s) (last s) size))
-      
+
       -- Todas las acciones.
       actionsOfP = listPlacesP ++ rMovesP
       actionsOfP' = listPlacesP' ++ rMovesP'
@@ -595,7 +676,7 @@ Código de prueba. Incluye una función para correr las partidas y dos agentes: 
 -}
 type TakAgent = TakGame -> IO (Maybe TakAction)
 
-{- La función ´runMatch´ corre la partida completa a partir del estado de juego dado, usando los dos 
+{- La función ´runMatch´ corre la partida completa a partir del estado de juego dado, usando los dos
 agentes dados. Retorna una tupla con los puntajes (score) finales del juego.
 -}
 runMatch :: (TakAgent, TakAgent) -> TakGame -> IO [(TakPlayer, Int)]
@@ -621,6 +702,13 @@ run3x3OnConsole = runOnConsole beginning3x3
 run4x4OnConsole :: IO [(TakPlayer, Int)]
 run4x4OnConsole = runOnConsole beginning4x4
 
+run5x5OnConsole :: IO [(TakPlayer, Int)]
+run5x5OnConsole = runOnConsole beginning5x5
+
+run6x6OnConsole :: IO [(TakPlayer, Int)]
+run6x6OnConsole = runOnConsole beginning6x6
+
+
 {- El agente de consola ´consoleAgent´ muestra el estado de juego y los movimientos disponibles por
 consola, y espera una acción por entrada de texto.
 -}
@@ -635,7 +723,7 @@ consoleAgent player state = do
       putStrLn ("Select one move:" ++ (drop 1 (concat [", "++ show m | m <- moves])))
       line <- getLine
       let input = readAction line
-      if elem input moves then return (Just input) else do 
+      if elem input moves then return (Just input) else do
          putStrLn "Invalid move!"
          consoleAgent player state
 
