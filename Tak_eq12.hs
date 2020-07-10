@@ -13,7 +13,7 @@ import Data.Maybe (fromJust, listToMaybe)
 import Data.List
 import Data.Char (ord)
 import System.Random
-import Roads
+import Roads -- Librería con código relevante para calcular los posibles caminos ganadores.
 
 {- Es posible que el paquete `System.Random` no esté disponible si se instaló el core de la Haskell 
 Platform en el sistema. Para instalarlo, ejecutar los siguientes comandos:
@@ -26,42 +26,61 @@ disponible junto con el `ghci`.
 
 -}
 
-{-- Lógica de juego --------------------------------------------------------------------------------
+{- Lo que verás cuando juegas (3x3):
 
-Funciones de marca sin ninguna implementación útil. Reemplazar por el código apropiado o por imports
-a los módulos necesarios.
+A1 A2 A3
+B1 B2 B3    <- Casillero.
+C1 C2 C3
+
+||WhitePlayer|| -> Muro del jugador WhitePlayer.
+__BlackPlayer__ -> Plana del jugador BlackPlayer.
+
+El tope de la casilla es el primer elemento de la lista.
+           |
+           v
+A1: [||BlackPlayer||, __WhitePlayer__]   <- Fichas en la casilla A1.
+A2: [__WhitePlayer__]   <- Fichas en la casilla A2.
+.
+.
+.
+C3: [] <- Fichas en la casilla C3.
+
+Fichas blancas: 10 <- Fichas restantes del jugador WhitePlayer.
+Fichas negras: 10 <- Fichas restantes del jugador BlackPlayer.
+Jugador actual: WhitePlayer <- Jugador actual.
 -}
 
-data TakPlayer = WhitePlayer | BlackPlayer deriving (Eq, Show, Enum, Bounded) -- Jugardores.
-data Chip = Wall TakPlayer | Stone TakPlayer deriving (Eq)-- Fichas.
+
+---------------------- Lógica de juego ------------------------------------------------------------
+
+data TakPlayer = WhitePlayer | BlackPlayer deriving (Eq, Show, Enum, Bounded) -- Jugadores.
+data Chip = Wall TakPlayer | Stone TakPlayer deriving (Eq) -- Fichas.
 data Box = Empty String | Stack String [Chip] deriving (Eq) -- Casillas. Son vacías o pilas de 1 o más fichas.
 data PlayerChips = Whites Int | Blacks Int -- Cantidad de fichas de los jugadores.
 data TakGame = Board [Box] (PlayerChips, PlayerChips) TakPlayer -- Tablero: /Casillas/Fichas/JugadorActivo.
-data TakAction = Move String String [Int] | Place Chip String deriving (Eq)-- Posibles movimientos.
+data TakAction = Move String String [Int] | Place Chip String deriving (Eq) -- Posibles movimientos.
 
 -- Util.
-tableroStrings3x3 = [x ++ y | x <- ["A", "B", "C"], y <- ["1", "2", "3"]]
-tableroVacio3x3 = [Empty s | s <- tableroStrings3x3]
+boardStrings3x3 = [x ++ y | x <- ["A", "B", "C"], y <- ["1", "2", "3"]]
+emptyBoard3x3 = [Empty s | s <- boardStrings3x3]
 
-tableroStrings4x4 = [x ++ y | x <- ["A", "B", "C", "D"], y <- ["1", "2", "3", "4"]]
-tableroVacio4x4 = [Empty s | s <- tableroStrings4x4]
+boardStrings4x4 = [x ++ y | x <- ["A", "B", "C", "D"], y <- ["1", "2", "3", "4"]]
+emptyBoard4x4 = [Empty s | s <- boardStrings4x4]
 
-
-player1 = WhitePlayer -- Jugador de las fichas blancas.
-player2 = BlackPlayer -- Jugador de las fichas negras.
+player1 = WhitePlayer
+player2 = BlackPlayer
 players = [player1, player2] -- Jugadores.
 
 firstPlayer = player1 -- Jugador inicial.
 
--- Mensajes de errores:
+-- Mensajes de posibles errores:
 errorPlaceNoEmpty = "Solo puedes colocar fichas en espacios vacíos."
 errorNotYourTurn = "Le toca al otro jugador."
 errorLacksChips = "No tienes más fichas."
-errorWrongChipsFormat = "El formato de la tupla de fichas debe ser (Whites w, Blacks b)" -- No debería pasar nunca.
-errorEndGame = "El juego ya ha terminado."
+errorWrongChipsFormat = "El formato de la tupla de fichas debe ser (Whites w, Blacks b)"
 errorMoveEmpty = "No se puede mover una casilla vacía."
 errorNotYourStack = "Esta pila no te pertenece."
-errorNotStraight = "Movimiento inválido."
+errorNotStraight = "Movimiento no válido, el camino descrito no es derecho."
 errorWallInPath = "Movimiento no válido, hay un muro en el camino."
 errorPath = "Desplazamiento no válido."
 errorMoveNotFound = "Movimiento no válido, quizá escribiste mal el movimiento."
@@ -75,7 +94,7 @@ showChips (a,b) = (show a) ++ ('\n':(show b))
 showBoxes :: [Box] -> String
 showBoxes xs = concat (if largo == 9 then separarEnN 3 lista else separarEnN 4 lista)
    where
-      lista = map ((++" ") . show) xs -- [A1 , A2 , A3 , \n , B1 , B2 , B3 , \n , C1 , C2 , C3 ]
+      lista = map ((++" ") . show) xs
       largo = length lista
       separarEnN n [] = []
       separarEnN n lista = (take n lista) ++ ("\n":(separarEnN n (drop n lista)))
@@ -93,9 +112,9 @@ isFromPlayer _ _ = False
 
 -- Devuelve posibles movimientos.
 linkTraceWithMovement :: Int -> String -> [[Int]] -> String -> [TakAction]
-linkTraceWithMovement stackSize i des f = [Move i f d | d <- des, (distanceBetween i f) == (length d), (sumPath d) <= stackSize]
+linkTraceWithMovement stackSize i des f = moves
    where
-      sumPath x = foldr1 (+) x
+      moves = [Move i f d | d <- des, (distanceBetween i f) == (length d), (sum d) <= stackSize]
 
 -- Devuelve una lista con los posibles recorridos.
 possibleTraces :: Int -> [[Int]]
@@ -123,10 +142,11 @@ realMovements pos stackSize possibles = res
 
 -- Devuelve una lista con los destinos posibles.
 possibleMovements :: Char -> Char -> Int -> [String]
-possibleMovements a b size = [x:[y] | x <- ['A'..lastChar], y <- ['1'..lastDigit], (x == a || y == b)] 
+possibleMovements a b boardSize = result
    where
-      lastChar = if size == 3 then 'C' else 'D'
-      lastDigit = if size == 3 then '3' else '4'
+      result = [x:[y] | x <- ['A'..lastChar], y <- ['1'..lastDigit], (x == a || y == b)] 
+      lastChar = if boardSize == 3 then 'C' else 'D'
+      lastDigit = if boardSize == 3 then '3' else '4'
 
 -- Devuelve true si una casilla es vacía.
 isEmpty :: Box -> Bool
@@ -148,7 +168,7 @@ getLargestBox xs = largest
       idx = fromJust (elemIndex maxStackLength lengths)
       largest = xs!!idx
 
--- Devuelve una casilla del casillero.
+-- Busca una casilla en el casillero.
 getBox :: String -> [Box] -> Box
 getBox s b = getLargestBox filtered
    where
@@ -159,11 +179,6 @@ getBox s b = getLargestBox filtered
       matchBox s box@(Empty str) = if s == str then box else Empty ""
       matchBox s box@(Stack str _) = if s == str then box else Empty ""
 
--- Devuelve True si un jugador dado ganó la partida.
-{-won :: TakPlayer -> Bool
-won WhitePlayer = 
-won BlackPlayer = 
--}
 -- Devuelve True si se empata.
 tie :: TakGame -> Bool
 tie (Board b _ _) = sameAmmount
@@ -263,31 +278,29 @@ checkPathError (Stack _ stck) path des b = or [condit1, condit2, condit3, condit
       lenBoxes = length b
       lenStack = length stck
       n = floor (sqrt (fromIntegral lenBoxes))
-      condit1 = or (map (\x -> x < 1) des) -- en 3x3 [1,0]
-      condit2 = sumDes > n -- en 3x3 [2,2]
-      condit3 = lenDes >= n -- en 3x3 [1,1,1,1] error de usuario.
-      condit4 = sumDes > lenStack -- en 3x3 [2,2] con una pila de 1 error de usuario.
+      condit1 = or (map (\x -> x < 1) des)
+      condit2 = sumDes > n
+      condit3 = lenDes >= n
+      condit4 = sumDes > lenStack
 
 -- Apila una casilla.
 modifyBox :: [Int] -> [Box] -> Box -> Int -> Box
 modifyBox des path (Stack s chs) i = newStack
    where
-      newStack = addChips taken (path!!i) -- [B1, C1]  des = [1,1] chs = [White, Black]
+      newStack = addChips taken (path!!i)
       sumDes = sum des
       firstOnHand = take sumDes chs
       firstDrop = if (length firstOnHand) == des!!0
                   then firstOnHand
-                  else drop ((length firstOnHand) - des!!0) firstOnHand -- if (length chs) > (des!!0) then drop (des!!0) chs else take desI chs -- [White]
+                  else drop ((length firstOnHand) - des!!0) firstOnHand
       secondOnHand = take (sumDes - des!!0) chs
       secondDrop = if (length secondOnHand) == des!!1
                    then secondOnHand
-                   else drop ((length secondOnHand) - des!!1) secondOnHand -- take ((sum des) - (des!!0)) chs
+                   else drop ((length secondOnHand) - des!!1) secondOnHand
       thirdOnHand = take (sumDes - des!!0 - des!!1) chs
       thirdDrop = if length thirdOnHand == des!!2
                   then thirdOnHand
                   else drop (des!!2) thirdOnHand
-      --secondDrop = if (length firstDrop) > (des!!1) then drop (des!!1) firstDrop else take desI firstDrop 
-      --thirdDrop = if (length secondDrop) > (des!!2) then drop (des!!2) secondDrop else take desI secondDrop
       taken = case i of
                   0 -> firstDrop
                   1 -> secondDrop
@@ -297,10 +310,10 @@ modifyBox des path (Stack s chs) i = newStack
 
 -- Mueve una pila y actualiza el tablero.
 replacePath :: [Int] -> [Box] -> Box -> [Box] -> [Box]
-replacePath des path stck@(Stack s chs) b = resultB -- Devolver tablero.
+replacePath des path stck@(Stack s chs) b = resultB
    where
       is3x3 = (length b) == 9
-      modifiedPath = map (modifyBox des path stck) [0..((length des) - 1)] -- [0,1] -- R=[Stack "B2" [chsB1], Stack "C2" [chsB2]]
+      modifiedPath = map (modifyBox des path stck) [0..((length des) - 1)]
       sumPath = sum des
       modifiedStack = if (length chs) > sumPath then Stack s (drop sumPath chs) else Empty s
       bWithStack = map (ifStackReplace stck) b -- Mapear y reemplazar la pila en el tablero.
@@ -308,7 +321,7 @@ replacePath des path stck@(Stack s chs) b = resultB -- Devolver tablero.
                                                     then modifiedStack
                                                     else b2
       ifStackReplace _ b2 = b2
-      bWithPathOfPaths = map (ifInPathReplace modifiedPath) bWithStack -- Mapear y reemplazar el camino modificado. -- [[Box1, Box2], [...]]
+      bWithPathOfPaths = map (ifInPathReplace modifiedPath) bWithStack -- Mapear y reemplazar el camino modificado.
       ifInPathReplace p box = map (ifMatchReplace box) p
       ifMatchReplace b1@(Stack s1 _) b2@(Stack s2 _) = if s1 == s2
                                                        then b2
@@ -321,7 +334,7 @@ replacePath des path stck@(Stack s chs) b = resultB -- Devolver tablero.
       listOfCoords = if is3x3 then listCoords3x3 else listCoords4x4
       resultB = zipWith getBox listOfCoords bWithPathOfPaths
 
-{- Actualiza el vector de fichas a partir de un movimiento válido.
+{- Actualiza el tablero a partir de un movimiento válido.
    Si el movimiento no es válido se arroja un error. -}
 performAction :: TakGame -> (TakPlayer, TakAction) -> TakGame
 -- Place.
@@ -333,7 +346,7 @@ performAction (Board b chs _) (p, (Place ch s)) | isEmpty c = Board newB newChs 
       newP = oppositePlayer p
       newChs = substractChip p chs
       newB = putOnEmpty ch b c
-      putOnEmpty r xs x = map (ifMatchReplace r x) xs --  "A2" [Empty "A1", Empty "A2", Empty "A3"...]
+      putOnEmpty r xs x = map (ifMatchReplace r x) xs
       ifMatchReplace rep (Empty str1) nm@(Empty str2) = if str2 == str1
                                                         then Stack str1 [rep]
                                                         else nm
@@ -376,37 +389,12 @@ performAction (Board b cs _) (p, (Move si sf des)) = Board newB cs newP -- Movim
       path = getPath si sf b
       newB = replacePath des path stack b
 
--- Posibles caminos derechos 3x3.
-rows3x3 = [x:[y] | x <- ['A'..'C'], y <- ['1'..'3']] -- -> [A1, A2, A3, A4, B1, B2, B3...]
-straightRows3x3 = [(take 3 rows3x3)] : [(take 3 (drop 3 rows3x3))] : [(drop 6 rows3x3)] : []
-columns3x3 = [x:[y] | y <- ['1'..'3'], x <- ['A'..'C']] -- -> [A1, B1, C1, A2, B2, ...]
-straightColumns3x3 = [(take 3 columns3x3)] : [(take 3 (drop 3 columns3x3))] : [(drop 6 columns3x3)] : []
-straightRoads3x3 = (concat straightRows3x3) ++ (concat straightColumns3x3)
--- Posibles caminos derechos 4x4.
-rows4x4 = [x:[y] | x <- ['A'..'D'], y <- ['1'..'4']] -- -> [A1, A2, A3, A4, B1, B2, B3...]
-straightRows4x4 = [(take 4 rows4x4)] : [(take 4 (drop 4 rows4x4))] : [(take 4 (drop 8 rows4x4))] : [(drop 12 rows4x4)] : []
-columns4x4 = [x:[y] | y <- ['1'..'4'], x <- ['A'..'D']] -- -> [A1, B1, C1, A2, B2, ...]
-straightColumns4x4 = [(take 4 columns4x4)] : [(take 4 (drop 4 columns4x4))] : [(take 4 (drop 8 columns4x4))] : [(drop 12 columns4x4)] : []
-straightRoads4x4 = (concat straightRows4x4) ++ (concat straightColumns4x4)
-
--- Posibles caminos 3x3.
---straightColumns3x3 ++
-walks3x3Coords = (notSquaredWalks 3 [[(0,0)]]) ++ (notSquaredWalks 3 [[(0,1)]]) ++ (notSquaredWalks 3 [[(0,2)]]) ++ (notSquaredWalks 3 [[(1,2)]]) ++ (notSquaredWalks 3 [[(2,2)]])
-mappedCoords3x3 = map (map (translateCoords 3)) walks3x3Coords
-walks3x3 = mappedCoords3x3 ++ straightRoads3x3
-
--- Posibles caminos 4x4.
---straightColumns4x4 ++ 
-walks4x4Coords = (notSquaredWalks 4 [[(0,0)]]) ++ (notSquaredWalks 4 [[(0,1)]]) ++ (notSquaredWalks 4 [[(0,2)]]) ++ (notSquaredWalks 4 [[(0,3)]]) ++ (notSquaredWalks 4 [[(1,3)]]) ++ (notSquaredWalks 4 [[(2,3)]]) ++ (notSquaredWalks 4 [[(3,3)]])
-mappedCoords4x4 = map (map (translateCoords 4)) walks4x4Coords
-walks4x4 = mappedCoords4x4 ++ straightRoads4x4
-
 -- Devuelve True si un jugador se quedó sin fichas.
 noChips :: (PlayerChips, PlayerChips) -> Bool
 noChips (Whites w, Blacks b) = or [w == 0, b == 0]
 noChips _ = error errorWrongChipsFormat
 
--- Traduce coordenadas del eje cartesiano a coordenadas del tablero.  [[(0,1), (0,2), (0,3)], []]
+-- Traduce coordenadas del eje cartesiano a coordenadas del tablero.
 translateCoords :: Int -> (Int, Int) -> String
 translateCoords size (x, y) = (toRow y):(toColumn x)
    where
@@ -419,53 +407,63 @@ translateCoords size (x, y) = (toRow y):(toColumn x)
 
       toColumn a = show (a + 1)
 
+-- Posibles caminos derechos 3x3.
+rows3x3 = [x:[y] | x <- ['A'..'C'], y <- ['1'..'3']] -- -> [A1, A2, A3, A4, B1, B2, B3...]
+straightRows3x3 = [(take 3 rows3x3)] : [(take 3 (drop 3 rows3x3))] : [(drop 6 rows3x3)] : []
+columns3x3 = [x:[y] | y <- ['1'..'3'], x <- ['A'..'C']] -- -> [A1, B1, C1, A2, B2, ...]
+straightColumns3x3 = [(take 3 columns3x3)] : [(take 3 (drop 3 columns3x3))] : [(drop 6 columns3x3)] : []
+straightRoads3x3 = (concat straightRows3x3) ++ (concat straightColumns3x3)
+
+-- Posibles caminos derechos 4x4.
+rows4x4 = [x:[y] | x <- ['A'..'D'], y <- ['1'..'4']] -- -> [A1, A2, A3, A4, B1, B2, B3...]
+straightRows4x4 = [(take 4 rows4x4)]:[(take 4 (drop 4 rows4x4))]:[(take 4 (drop 8 rows4x4))]:[(drop 12 rows4x4)]:[]
+columns4x4 = [x:[y] | y <- ['1'..'4'], x <- ['A'..'D']] -- -> [A1, B1, C1, D1, A2, B2, ...]
+straightColumns4x4 = [(take 4 columns4x4)]:[(take 4 (drop 4 columns4x4))]:[(take 4 (drop 8 columns4x4))]:[(drop 12 columns4x4)]:[]
+straightRoads4x4 = (concat straightRows4x4) ++ (concat straightColumns4x4)
+
+-- Posibles caminos 3x3.
+roads3x3From00 = notSquaredWalks 3 [[(0,0)]]
+roads3x3From01 = notSquaredWalks 3 [[(0,1)]]
+roads3x3From02 = notSquaredWalks 3 [[(0,2)]]
+roads3x3From12 = notSquaredWalks 3 [[(1,2)]]
+roads3x3From22 = notSquaredWalks 3 [[(2,2)]]
+
+walks3x3Coords = roads3x3From00 ++ roads3x3From01 ++ roads3x3From02 ++ roads3x3From12 ++ roads3x3From22
+mappedCoords3x3 = map (map (translateCoords 3)) walks3x3Coords
+walks3x3 = mappedCoords3x3 ++ straightRoads3x3
+
+-- Posibles caminos 4x4.
+roads4x4From00 = notSquaredWalks 4 [[(0,0)]]
+roads4x4From01 = notSquaredWalks 4 [[(0,1)]]
+roads4x4From02 = notSquaredWalks 4 [[(0,2)]]
+roads4x4From03 = notSquaredWalks 4 [[(0,3)]]
+roads4x4From13 = notSquaredWalks 4 [[(1,3)]]
+roads4x4From23 = notSquaredWalks 4 [[(2,3)]]
+roads4x4From33 = notSquaredWalks 4 [[(3,3)]]
+
+walks4x4Coords = roads4x4From00 ++ roads4x4From01 ++ roads4x4From02 ++ roads4x4From03 ++ roads4x4From13 ++ roads4x4From23 ++ roads4x4From33
+mappedCoords4x4 = map (map (translateCoords 4)) walks4x4Coords
+walks4x4 = mappedCoords4x4 ++ straightRoads4x4
+
 -- Devuelve True si el camino es ganador.
 verifyPath :: TakPlayer -> [Box] -> Bool
 verifyPath p path = and (map (topIsFlatPlayer p) path)
 
--- Retorna True si se cumple una condición de fin de juego.
+-- Retorna (True, p) si se cumple una condición de fin de juego y ganó p.
 endGame :: TakGame -> (Bool, TakPlayer) -- Bool
 endGame (Board _ chs p) | noChips chs = (True, p) -- Un jugador sin fichas.
--- Falta la condición de llegar de un lado a otro.
-endGame (Board b _ p) = (res, winner) --(or (map and playerWalks), p)
+endGame (Board b _ p) = (res, winner)
    where
       p' = oppositePlayer p
       size = if (length b) == 9 then 3 else 4
       possibleWalks = if size == 3 then walks3x3 else walks4x4
-      boxesRoad = map (map (`getBox` b)) possibleWalks -- [[Empty s, Stack, ...], [Empty s, Empty, ...], [Stack s chs, ...]]
-      resP = or (map (verifyPath p) boxesRoad) -- [True, False, False]
-      resP' = or (map (verifyPath p') boxesRoad) -- [True, False, False]
+      boxesRoad = map (map (`getBox` b)) possibleWalks
+      resP = or (map (verifyPath p) boxesRoad)
+      resP' = or (map (verifyPath p') boxesRoad)
       res = resP || resP'
       winner = if resP && resP' then p else (if resP then p else p')
 
-      {-coordsTranslated = map (map (translateCoords size)) possibleWalks -- [["A1", "A2", "A3"], ["A1", "B1", "C1"]]
-      -- recorrer coordsTranslated y para cada recorrido chequear si en el tablero todos son (filter) toppeados con Stone de un player.
-      boxesWalks = map (map (`getBox` b)) coordsTranslated -- [[Empty "A1", Empty "A2", Stack "A3" chs], ...]
-      playerWalks = map (map (topIsFlatPlayer p)) boxesWalks -- [[True, True, False], [True, True, True]]-}
-
-{-
-
-A1 A2 A3
-B1 B2 B3
-C1 C2 C3
-
-A1: [||BlackPlayer||, __WhitePlayer__]
-A2: [__WhitePlayer__]
-A3: []
-.
-.
-.
-C3:
-
-Fichas blancas: 10
-Fichas negras: 10
-Jugador actual: WhitePlayer
--}
-
---------------------------- Move A1 A3 [1, 1] = Mover A1 a A3 dejando [1, 1]
---------------------------- Place (Stone WhitePlayer) A2 = Colocar __WhitePlayer__ en A2
---------------------------- Place (Wall  BlackPlayer) A2 = Colocar ||WhitePlayer|| en A2
--- Instancias.
+-- Instancias con formatos.
 instance Show TakAction where
    show (Move ini fin des) = "Mover "++ini++" a "++fin++" dejando "++show des
    show (Place ficha lugar) = "Colocar "++show ficha++" en "++lugar
@@ -482,62 +480,63 @@ instance Show Box where
    show (Empty s) = s
    show (Stack s _) = s
 
+sbs_ = showBoxes
+sb_ = showBox
+ap = "\nJugador activo: "
 instance Show TakGame where
-   show (Board boxes chips player) = '\n':(showBoxes boxes) ++ "\n" ++ (concat (map showBox boxes)) ++ ('\n':(show (fst chips)) ++ ('\n':(show (snd chips)))) ++ ('\n':"Jugador activo: " ++ (show player)++"\n") -- "Jugador activo: " ++ (show player) ++ ('\n':(showChips chips)) ++ "\nTablero:\n" ++ (showBoxes boxes)
-
--- Funciones del Tak.
+   show (Board b cs p) = '\n':(sbs_ b)++"\n"++(concat (map sb_ b))++('\n':(show (fst cs))++('\n':(show (snd cs))))++ap++(show p)++"\n"
 
 -- El estado inicial del juego Tak con un tablero de 3x3, con el tablero vacío.
 beginning3x3 :: TakGame
-beginning3x3 = Board (tableroVacio3x3) (Whites 10, Blacks 10) firstPlayer
+beginning3x3 = Board (emptyBoard3x3) (Whites 10, Blacks 10) firstPlayer
 
 -- El estado inicial del juego Tak con un tablero de 4x4, con el tablero vacío.
 beginning4x4 :: TakGame
-beginning4x4 = Board (tableroVacio4x4) (Whites 15, Blacks 15) firstPlayer
+beginning4x4 = Board (emptyBoard4x4) (Whites 15, Blacks 15) firstPlayer
 
 {-La lista debe incluir una y solo una tupla para
 cada jugador. Si el jugador está activo, la lista asociada debe incluir todos sus posibles movimientos para
 el estado de juego dado. Sino la lista debe estar vacía.-}
 actions :: TakGame -> [(TakPlayer, [TakAction])]
+-- Primeros dos turnos.
 actions (Board board (Whites w, Blacks b) p)
    | or [w==10,b==10,w==15,b==15] = [(p, listPlacesP), (p', listPlacesP')]
    where
       p' = oppositePlayer p
-      empties = filter isEmpty board -- [Empty "A2", Empty "B3"] -> [[Place (Stone player) "A2", Place (Wall player) "A2"]]
+      empties = filter isEmpty board
       listPlacesP = concat (map (getPlacesFor p) empties)
       listPlacesP' = concat (map (getPlacesFor p') empties)
-      getPlacesFor pl (Empty s) = (Place (Stone (oppositePlayer pl)) s):[(Place (Wall (oppositePlayer pl)) s)] -- [[Place (Stone player) "A2", Place (Wall player) "A2"]]
+      getPlacesFor pl (Empty s) = (Place (Stone (oppositePlayer pl)) s):[(Place (Wall (oppositePlayer pl)) s)]
 
-actions (Board b chs p) = [(p, actionsOfP), (p', actionsOfP')] -- [(WhitePlayer, [acciones]), (BlackPlayer, [acciones])]
+actions (Board b chs p) = [(p, actionsOfP), (p', actionsOfP')]
    where
       size = if length b == 9 then 3 else 4
       p' = oppositePlayer p
       -- Places.
-      empties = filter isEmpty b -- [Empty "A2", Empty "B3"] -> [[Place (Stone player) "A2", Place (Wall player) "A2"]]
+      empties = filter isEmpty b
       listPlacesP = concat (map (getPlacesFor p) empties)
       listPlacesP' = concat (map (getPlacesFor p') empties)
-      getPlacesFor pl (Empty s) = (Place (Stone pl) s):[(Place (Wall pl) s)] -- [[Place (Stone player) "A2", Place (Wall player) "A2"]]
+      getPlacesFor pl (Empty s) = (Place (Stone pl) s):[(Place (Wall pl) s)]
 
       -- Moves.
       stacks = filter (not . isEmpty) b
       stacksP = filter (isFromPlayer p) stacks
       stacksP' = filter (isFromPlayer p') stacks
-      rMovesP = concat (concat (map getRM stacksP))-- concat si es una [[TakActions]].
-      rMovesP' = concat (concat (map getRM stacksP')) -- concat si es una [[TakActions]].
+      rMovesP = concat (concat (map getRM stacksP))
+      rMovesP' = concat (concat (map getRM stacksP'))
       pTraces = possibleTraces size
-      getRM (Stack s cs) = map (linkTraceWithMovement (length cs) s pTraces) (realMovements s (length cs) (possibleMovements (head s) (last s) size)) -- [s1=["A3", "A2",...],s2 =["B1", "B2",...]]      
+      getRM (Stack s cs) = map (linkTraceWithMovement (length cs) s pTraces) (realMovements s (length cs) (possibleMovements (head s) (last s) size))
       
-      -- All Actions.
+      -- Todas las acciones.
       actionsOfP = listPlacesP ++ rMovesP
       actionsOfP' = listPlacesP' ++ rMovesP'
-
 
 {-Esta función aplica una acción sobre un
 estado de juego dado, y retorna el estado resultante. Se debe levantar un error si el jugador dado no es el
 jugador activo, si el juego está terminado, o si la acción no es realizable.-}
 next :: TakGame -> (TakPlayer, TakAction) -> TakGame
 next g t@(p, _)
-   | (fromJust (activePlayer g)) == p = performAction g t -- hacer acción correspondiente.
+   | (fromJust (activePlayer g)) == p = performAction g t -- Realizar acción correspondiente.
    | otherwise = error errorNotYourTurn
 
 {-Si el juego está terminado retorna el resultado de juego
@@ -551,7 +550,7 @@ result g@(Board b _ p) = if (p == BlackPlayer) then zip players [1, -1] else zip
 {-Retorna el puntaje para todos los jugadores en el estado
 de juego dado. Esto es independiente de si el juego está terminado o no.-}
 score :: TakGame -> [(TakPlayer, Int)]
-score (Board boxes _ _) = zip [player1, player2] [s1, s2] -- [(player1, s1), (player2, s2)]
+score (Board boxes _ _) = zip [player1, player2] [s1, s2]
     where
         s1 = count boxes player1
         s2 = count boxes player2
@@ -588,12 +587,6 @@ readAction s
 activePlayer :: TakGame -> Maybe TakPlayer
 activePlayer g | fst (endGame g) = Nothing
 activePlayer (Board _ _ player) = Just player
-
-{-activePlayer :: TakGame -> Maybe TakPlayer
-activePlayer g = listToMaybe [p | (p, as) <- actions g, not (null as)]-}
-
---players :: [TakPlayer]
---players = [minBound..maxBound]
 
 {-- Match controller -------------------------------------------------------------------------------
 
