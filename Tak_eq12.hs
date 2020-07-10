@@ -580,7 +580,7 @@ readAction s
    | otherwise = Place (Wall WhitePlayer) "ABCDE" -- Simula un movimiento no válido.
    where
       salir = isSubsequenceOf "Salir" s
-      isMove = isSubsequenceOf "Mover" s
+      isMove = (isSubsequenceOf "Mover" s) && (isSubsequenceOf "dejando" s)
       isPlace = isSubsequenceOf "Colocar" s
       place = Place chip f
       player = if isSubsequenceOf "WhitePlayer" s then WhitePlayer else BlackPlayer
