@@ -11,7 +11,7 @@ module Tak where
 
 import Data.Maybe (fromJust, listToMaybe)
 import Data.List
-import Data.Char (ord)
+import Data.Char (ord, intToDigit)
 import System.Random
 import Roads -- Librería con código relevante para calcular los posibles caminos ganadores.
 
@@ -130,11 +130,13 @@ linkTraceWithMovement stackSize i des f = moves
 
 -- Devuelve una lista con los posibles recorridos.
 possibleTraces :: Int -> [[Int]]
-possibleTraces size = list1 ++ list2 ++ list3
+possibleTraces size = list1 ++ list2 ++ list3 ++ list4 ++ list5
    where
       list1 = [[x] | x <- [1..size], x <= size]
       list2 = [[x,y] | x <- [1..size], y <- [1..size], (x + y) <= size]
       list3 = [[x,y,z] | x <- [1..size], y <- [1..size], z <- [1..size], (x + y + z) <= size]
+      list4 = [[x,y,z,w] | x <- [1..size], y <- [1..size], z <- [1..size], w <- [1..size], (x + y + z + w) <= size]
+      list5 = [[x,y,z,w,j] | x <- [1..size], y <- [1..size], z <- [1..size], w <- [1..size], j <- [1..size], (x + y + z + w + j) <= size]
 
 -- Devuelve la distancia entre dos casillas.
 distanceBetween :: String -> String -> Int
@@ -157,8 +159,12 @@ possibleMovements :: Char -> Char -> Int -> [String]
 possibleMovements a b boardSize = result
    where
       result = [x:[y] | x <- ['A'..lastChar], y <- ['1'..lastDigit], (x == a || y == b)]
-      lastChar = if boardSize == 3 then 'C' else (if boardSize == 4 then 'D' else (if boardSize == 5 then 'E' else 'F'))
-      lastDigit = if boardSize == 3 then '3' else (if boardSize == 4 then '4' else (if boardSize == 5 then '5' else '6'))
+      lastChar = case boardSize of
+                  3 -> 'C'
+                  4 -> 'D'
+                  5 -> 'E'
+                  6 -> 'F'
+      lastDigit = intToDigit boardSize
 
 -- Devuelve true si una casilla es vacía.
 isEmpty :: Box -> Bool
@@ -530,7 +536,7 @@ endGame (Board b _ p) = (res, winner)
    where
       p' = oppositePlayer p
       size = if (length b) == 9 then 3 else (if (length b) == 16 then 4 else (if (length b) == 25 then 5 else 6))
-      possibleWalks = if size == 3 then walks3x3 else (if size == 4 then walks4x4 else (if size == 25 then walks5x5 else walks6x6))
+      possibleWalks = if size == 3 then walks3x3 else (if size == 4 then walks4x4 else (if size == 5 then walks5x5 else walks6x6))
       boxesRoad = map (map (`getBox` b)) possibleWalks
       resP = or (map (verifyPath p) boxesRoad)
       resP' = or (map (verifyPath p') boxesRoad)
@@ -584,8 +590,17 @@ el estado de juego dado. Sino la lista debe estar vacía.-}
 actions :: TakGame -> [(TakPlayer, [TakAction])]
 -- Primeros dos turnos.
 actions (Board board (Whites w, Blacks b) p)
-   | or [w==10,b==10,w==15,b==15] = [(p, listPlacesP), (p', listPlacesP')]
+   | (size == 3) && or [w==10,b==10] = [(p, listPlacesP), (p', listPlacesP')]
+   | (size == 4) && or [w==15,b==15] = [(p, listPlacesP), (p', listPlacesP')]
+   | (size == 5) && or [w==21,b==21] = [(p, listPlacesP), (p', listPlacesP')]
+   | (size == 6) && or [w==30,b==30] = [(p, listPlacesP), (p', listPlacesP')]
    where
+      l = length board
+      size = case l of
+               9 -> 3
+               16 -> 4
+               25 -> 5
+               36 -> 6
       p' = oppositePlayer p
       empties = filter isEmpty board
       listPlacesP = concat (map (getPlacesFor p) empties)
@@ -594,7 +609,12 @@ actions (Board board (Whites w, Blacks b) p)
 
 actions (Board b chs p) = [(p, actionsOfP), (p', actionsOfP')]
    where
-      size = if (length b) == 9 then 3 else (if (length b) == 16 then 4 else (if (length b) == 25 then 5 else 6))
+      l = length b
+      size = case l of
+               9 -> 3
+               16 -> 4
+               25 -> 5
+               36 -> 6
       p' = oppositePlayer p
       -- Places.
       empties = filter isEmpty b
