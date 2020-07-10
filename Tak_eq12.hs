@@ -133,9 +133,24 @@ isEmpty :: Box -> Bool
 isEmpty (Empty _) = True
 isEmpty _ = False
 
+-- Devuelve la cantidad de fichas en una casilla.
+getAmmountOfChips :: Box -> Int
+getAmmountOfChips (Empty _) = 0
+getAmmountOfChips (Stack _ chs) = length chs
+
+-- Devuelve la casilla con más fichas de un conjunto de fichas.
+getLargestBox :: [Box] -> Box
+getLargestBox [x] = x
+getLargestBox xs = largest
+   where
+      lengths = map getAmmountOfChips xs
+      maxStackLength = maximum lengths
+      idx = fromJust (elemIndex maxStackLength lengths)
+      largest = xs!!idx
+
 -- Devuelve una casilla del casillero.
 getBox :: String -> [Box] -> Box
-getBox s b = head filtered
+getBox s b = getLargestBox filtered
    where
       mapped = map (matchBox s) b
       filtered = filter (notNullStr) mapped
@@ -484,7 +499,8 @@ beginning4x4 = Board (tableroVacio4x4) (Whites 15, Blacks 15) firstPlayer
 cada jugador. Si el jugador está activo, la lista asociada debe incluir todos sus posibles movimientos para
 el estado de juego dado. Sino la lista debe estar vacía.-}
 actions :: TakGame -> [(TakPlayer, [TakAction])]
-actions (Board board (Whites w, Blacks b) p) | w == 10 || b == 10 = [(p, listPlacesP), (p', listPlacesP')]
+actions (Board board (Whites w, Blacks b) p)
+   | or [w==10,b==10,w==15,b==15] = [(p, listPlacesP), (p', listPlacesP')]
    where
       p' = oppositePlayer p
       empties = filter isEmpty board -- [Empty "A2", Empty "B3"] -> [[Place (Stone player) "A2", Place (Wall player) "A2"]]
