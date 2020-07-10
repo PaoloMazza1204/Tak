@@ -263,9 +263,9 @@ modifyBox des path (Stack s chs) i = newStack
       firstDrop = if (length firstOnHand) == des!!0
                   then firstOnHand
                   else drop ((length firstOnHand) - des!!0) firstOnHand -- if (length chs) > (des!!0) then drop (des!!0) chs else take desI chs -- [White]
-      secondOnHand = firstOnHand --take (sumDes - des!!0) chs
-      secondDrop = if True --(length secondOnHand) == des!!1
-                   then [Wall WhitePlayer] --secondOnHand
+      secondOnHand = take (sumDes - des!!0) chs
+      secondDrop = if (length secondOnHand) == des!!1
+                   then secondOnHand
                    else drop ((length secondOnHand) - des!!1) secondOnHand -- take ((sum des) - (des!!0)) chs
       thirdOnHand = take (sumDes - des!!0 - des!!1) chs
       thirdDrop = if length thirdOnHand == des!!2
